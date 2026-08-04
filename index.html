@@ -6,6 +6,7 @@
 <title>UBCC / Legenda · B2B Account Engine</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <style>
 :root{--teal:#008EA6;--deep:#056A78;--paper:#F7F4EF;--char:#3A3A3A;--grey:#8a8578;--card:#fff;--rust:#B05C3B;--gold:#A8894C;--line:#e6e0d2;--ok:#2e7d32;--bad:#c62828;--radius:10px}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -14,14 +15,12 @@ h1,h2,h3,.serif{font-family:Georgia,'Times New Roman',serif}
 button{cursor:pointer;font-family:inherit}
 a{color:var(--deep)}
 .hidden{display:none!important}
-/* login */
 #login{max-width:380px;margin:12vh auto;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:32px;box-shadow:0 4px 20px rgba(0,0,0,.06)}
 #login h1{color:var(--deep);font-size:22px;margin-bottom:4px}
 #login p{color:var(--grey);font-size:12px;margin-bottom:18px}
 #login input{width:100%;padding:10px 12px;margin-bottom:10px;border:1px solid var(--line);border-radius:8px;font-size:14px}
 #login button{width:100%;padding:11px;background:var(--teal);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:bold}
 #loginerr{color:var(--bad);font-size:12px;margin-top:8px;min-height:16px}
-/* shell */
 header{background:var(--deep);color:#fff;padding:12px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;position:sticky;top:0;z-index:50}
 header h1{font-size:18px;letter-spacing:.4px}
 nav{display:flex;gap:4px;flex-wrap:wrap}
@@ -30,19 +29,17 @@ nav button.on{background:var(--teal);border-color:var(--teal);font-weight:bold}
 #who{margin-left:auto;font-size:11px;opacity:.8}
 #season{background:var(--gold);color:#fff;padding:6px 20px;font-size:12px;text-align:center}
 main{padding:18px 20px;max-width:1500px;margin:0 auto}
-/* controls */
 .controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
 .controls input,.controls select{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:13px}
 .controls input{min-width:200px}
 .btn{padding:8px 14px;border-radius:8px;border:1px solid var(--line);background:#fff;font-size:12px}
 .btn.primary{background:var(--teal);color:#fff;border-color:var(--teal);font-weight:bold}
+.btn.danger{background:#fff;color:var(--bad);border-color:var(--bad)}
 .btn.small{padding:4px 9px;font-size:11px}
-/* kpis */
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
 .kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:12px 16px}
 .kpi .l{font-size:10px;color:var(--grey);text-transform:uppercase;letter-spacing:.5px}
 .kpi .v{font-size:24px;font-weight:bold;color:var(--deep);font-family:Georgia,serif}
-/* board */
 .board{display:flex;gap:12px;overflow-x:auto;align-items:flex-start;padding-bottom:10px}
 .col{min-width:255px;max-width:255px;background:#efeade;border-radius:12px;padding:8px;flex-shrink:0}
 .col h2{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--deep);padding:6px;display:flex;justify-content:space-between;font-family:Arial}
@@ -55,7 +52,6 @@ main{padding:18px 20px;max-width:1500px;margin:0 auto}
 .score{float:right;font-size:11px;font-weight:bold;color:#fff;background:var(--teal);border-radius:7px;padding:1px 7px}
 .score.hi{background:var(--rust)}
 .flag{font-size:10px;color:var(--rust);font-weight:bold}
-/* dossier */
 #overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:90}
 #dossier{position:fixed;top:0;right:0;bottom:0;width:min(680px,100%);background:var(--paper);z-index:100;overflow-y:auto;box-shadow:-6px 0 30px rgba(0,0,0,.2);padding:22px}
 #dossier h2{color:var(--deep);font-size:20px;margin-bottom:2px}
@@ -73,12 +69,10 @@ textarea{resize:vertical;font-family:inherit}
 .gen{white-space:pre-wrap;background:#fbfaf6;border:1px dashed var(--line);border-radius:8px;padding:12px;font-size:13px;margin-top:8px;line-height:1.6}
 .gen[dir=rtl]{text-align:right;font-size:14px}
 .copyrow{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
-/* charts */
 .chartrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:12px}
 .chartbox{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px}
 .chartbox h3{font-size:13px;color:var(--deep);margin-bottom:10px}
 .chartbox canvas{max-height:260px}
-/* lists */
 .rowitem{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:10px 14px;margin:6px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .rowitem .grow{flex:1;min-width:200px}
 .pill{font-size:10px;padding:2px 8px;border-radius:9px;background:#f3efe4;color:var(--grey)}
@@ -87,17 +81,42 @@ textarea{resize:vertical;font-family:inherit}
 .report{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:12px}
 .report h3{color:var(--deep)}
 .report pre{white-space:pre-wrap;font-family:inherit;font-size:13px;line-height:1.6;margin-top:8px}
-#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--deep);color:#fff;padding:10px 22px;border-radius:22px;font-size:13px;z-index:200;opacity:0;transition:opacity .3s}
-@media(max-width:700px){.grid2{grid-template-columns:1fr}#dossier{padding:14px}}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--deep);color:#fff;padding:10px 22px;border-radius:22px;font-size:13px;z-index:300;opacity:0;transition:opacity .3s}
+/* decline modal */
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:150;display:flex;align-items:center;justify-content:center}
+#modal .box{background:#fff;border-radius:14px;padding:24px;width:min(430px,92%)}
+#modal h3{color:var(--deep);margin-bottom:10px}
+/* catalog */
+#catalog{position:fixed;inset:0;background:#fff;z-index:200;overflow-y:auto}
+.cat-head{background:var(--deep);color:#fff;padding:28px 34px}
+.cat-head .brand{font-size:12px;letter-spacing:2px;text-transform:uppercase;opacity:.8}
+.cat-head h1{font-family:Georgia,serif;font-size:28px;margin-top:6px}
+.cat-head .sub{font-size:13px;opacity:.85;margin-top:4px}
+.cat-tools{padding:10px 34px;border-bottom:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap;background:#fbfaf6}
+.cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:18px;padding:26px 34px}
+.book{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.06);break-inside:avoid}
+.book .cov{height:210px;background:#efeade;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.book .cov img{width:100%;height:100%;object-fit:cover}
+.book .cov .spine{width:70%;height:80%;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;font-family:Georgia,serif;font-size:30px;font-weight:bold}
+.book .inf{padding:10px 12px}
+.book .ti{font-family:Georgia,serif;font-size:14px;font-weight:bold;line-height:1.3}
+.book .au{font-size:11px;color:var(--grey);margin-top:3px}
+.book .meta{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+.book .pr{background:var(--teal);color:#fff;font-size:11px;font-weight:bold;border-radius:7px;padding:2px 8px}
+.book .is{font-size:9px;color:var(--grey)}
+.cat-foot{padding:18px 34px;color:var(--grey);font-size:11px;border-top:1px solid var(--line)}
+body.printing #app,body.printing #login,body.printing #toast,body.printing #season{display:none!important}
+@media print{.cat-tools{display:none}#catalog{position:static}.cat-grid{grid-template-columns:repeat(3,1fr)}body{background:#fff}}
+@media(max-width:700px){.grid2{grid-template-columns:1fr}#dossier{padding:14px}.cat-grid{padding:16px}}
 </style>
 </head>
 <body>
 
-<div id="login">
+<div id="login" class="hidden">
   <h1>UBCC / Legenda</h1>
-  <p>B2B Account Engine · Ahmad + Fawaz</p>
-  <input id="lemail" type="email" value="team@legenda-b2b.app" autocomplete="username">
-  <input id="lpass" type="password" placeholder="Team password" autocomplete="current-password">
+  <p>B2B Account Engine · Ahmad + Fawaz + Shereen</p>
+  <input id="lemail" type="email" placeholder="Email" value="team@legenda-b2b.app" autocomplete="username">
+  <input id="lpass" type="password" placeholder="Password" autocomplete="current-password">
   <button onclick="doLogin()">Enter</button>
   <div id="loginerr"></div>
 </div>
@@ -105,12 +124,14 @@ textarea{resize:vertical;font-family:inherit}
 <div id="app" class="hidden">
 <header>
   <h1>UBCC / Legenda · B2B</h1>
-  <nav>
+  <nav id="mainnav">
     <button data-v="board" class="on" onclick="go('board')">Board</button>
     <button data-v="today" onclick="go('today')">Today</button>
+    <button data-v="titles" onclick="go('titles')">Title Lists</button>
     <button data-v="analytics" onclick="go('analytics')">Analytics</button>
     <button data-v="reports" onclick="go('reports')">Radar Reports</button>
     <button data-v="health" onclick="go('health')">Data Health</button>
+    <button data-v="declined" onclick="go('declined')">Declined</button>
   </nav>
   <span id="who"></span>
   <button class="btn small" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="sb.auth.signOut().then(()=>location.reload())">Log out</button>
@@ -123,29 +144,33 @@ textarea{resize:vertical;font-family:inherit}
       <input id="q" placeholder="Search name, hook, notes..." oninput="renderBoard()">
       <select id="fcat" onchange="renderBoard()"><option value="">All categories</option></select>
       <select id="fscore" onchange="renderBoard()"><option value="">Any score</option><option value="8">8+</option><option value="6">6+</option></select>
-      <button class="btn" onclick="openNew()">+ Add account</button>
+      <button class="btn salesonly" onclick="openNew()">+ Add account</button>
       <button class="btn" onclick="exportCSV()">Export CSV</button>
     </div>
     <div class="board" id="board"></div>
   </div>
   <div id="v-today" class="hidden"></div>
+  <div id="v-titles" class="hidden"></div>
   <div id="v-analytics" class="hidden">
     <div class="kpis" id="anaKpis"></div>
     <div class="chartrow">
       <div class="chartbox"><h3>Pipeline funnel</h3><canvas id="cFunnel"></canvas></div>
       <div class="chartbox"><h3>Win rate by category (closed deals)</h3><canvas id="cWin"></canvas></div>
-      <div class="chartbox"><h3>Activity: touches per week (target 40 outreach/mo)</h3><canvas id="cAct"></canvas></div>
+      <div class="chartbox"><h3>Activity: touches per week</h3><canvas id="cAct"></canvas></div>
       <div class="chartbox"><h3>Accounts by category</h3><canvas id="cCat"></canvas></div>
     </div>
     <div class="sect"><h3>Monthly KPI targets (from your plan)</h3><div id="kpiTargets"></div></div>
   </div>
   <div id="v-reports" class="hidden"></div>
   <div id="v-health" class="hidden"></div>
+  <div id="v-declined" class="hidden"></div>
 </main>
 </div>
 
 <div id="overlay" class="hidden" onclick="closeDossier()"></div>
 <div id="dossier" class="hidden"></div>
+<div id="modal" class="hidden"></div>
+<div id="catalog" class="hidden"></div>
 <div id="toast"></div>
 
 <script>
@@ -153,37 +178,51 @@ const SUPABASE_URL = "https://qxjlgfqvqhtrbttcgysw.supabase.co";
 const SUPABASE_KEY = "sb_publishable_FOeLR9B2zA6pRow0dcDqCw_2bHgiVar";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const STATUSES = ["To Contact","Contacted","Meeting","Proposal","Pilot","Won","Dead"];
-const STAGE_PROB = {"To Contact":0.05,"Contacted":0.15,"Meeting":0.35,"Proposal":0.55,"Pilot":0.75,"Won":1,"Dead":0};
-let ACC = [], TOUCH = [], SETTINGS = {}, charts = {};
+const STAGE_PROB = {"To Contact":0.05,"Contacted":0.15,"Meeting":0.35,"Proposal":0.55,"Pilot":0.75,"Won":1,"Dead":0,"Declined":0};
+const DECLINE_REASONS = ["Not a fit for B2B strategy","Contacted before, bad experience","No realistic budget","Wrong segment for books","Asked not to be contacted","Closed / out of business","Other"];
+let ACC = [], TOUCH = [], LISTS = [], SETTINGS = {}, charts = {}, ROLE = 'sales';
 
-/* ---------- boot ---------- */
+const active = () => ACC.filter(a=>a.status!=='Declined');
+const declined = () => ACC.filter(a=>a.status==='Declined');
+
+/* ---------- boot / share mode ---------- */
+const shareCode = new URLSearchParams(location.search).get('share');
 async function boot(){
+  if(shareCode){ return renderSharedCatalog(shareCode); }
   const {data:{session}} = await sb.auth.getSession();
   if(!session){ document.getElementById('login').classList.remove('hidden'); return; }
+  const email = session.user.email || '';
+  ROLE = email.startsWith('shereen') ? 'curator' : 'sales';
   document.getElementById('login').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
-  document.getElementById('who').textContent = localStorage.getItem('b2b_user') || setUserName();
-  await loadAll(); seasonBanner(); renderBoard(); }
+  if(ROLE==='curator'){ localStorage.setItem('b2b_user','Shereen'); document.querySelectorAll('.salesonly').forEach(e=>e.classList.add('hidden')); }
+  document.getElementById('who').textContent = (localStorage.getItem('b2b_user')||setUserName())+ (ROLE==='curator'?' · curation':'');
+  await loadAll(); seasonBanner();
+  if(ROLE==='curator'){ go('titles'); } else { renderBoard(); }
+}
 function setUserName(){
   let n = prompt("Who is using this device? (Ahmad / Fawaz)","Ahmad") || "Team";
   localStorage.setItem('b2b_user', n); return n; }
 async function doLogin(){
   const {error} = await sb.auth.signInWithPassword({email:lemail.value.trim(), password:lpass.value});
   document.getElementById('loginerr').textContent = error ? error.message : "";
-  if(!error) boot(); }
+  if(!error){ if(lemail.value.trim().startsWith('shereen')) localStorage.setItem('b2b_user','Shereen'); boot(); } }
 async function loadAll(){
-  const [a,t,s] = await Promise.all([
+  const [a,t,s,l] = await Promise.all([
     sb.from('b2b_accounts').select('*').order('score',{ascending:false,nullsFirst:false}),
     sb.from('b2b_touches').select('*').order('at',{ascending:false}),
-    sb.from('b2b_settings').select('*')]);
-  ACC = a.data||[]; TOUCH = t.data||[]; SETTINGS = Object.fromEntries((s.data||[]).map(r=>[r.key,r.value]));
-  const cats=[...new Set(ACC.map(x=>x.category).filter(Boolean))].sort();
+    sb.from('b2b_settings').select('*'),
+    sb.from('b2b_lists').select('*').order('created_at',{ascending:false})]);
+  ACC = a.data||[]; TOUCH = t.data||[]; LISTS = l.data||[];
+  SETTINGS = Object.fromEntries((s.data||[]).map(r=>[r.key,r.value]));
+  const cats=[...new Set(active().map(x=>x.category).filter(Boolean))].sort();
   fcat.innerHTML='<option value="">All categories</option>'+cats.map(c=>`<option>${esc(c)}</option>`).join(''); }
-function toast(m){const t=document.getElementById('toast');t.textContent=m;t.style.opacity=1;setTimeout(()=>t.style.opacity=0,1800);}
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.style.opacity=1;setTimeout(()=>t.style.opacity=0,2200);}
 function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;');}
 function by(){return localStorage.getItem('b2b_user')||'Team';}
+function canEdit(){return ROLE==='sales';}
 
-/* ---------- season banner ---------- */
+/* ---------- season ---------- */
 function seasonBanner(){
   const now=new Date(), msg=[];
   const aibf=new Date('2026-09-24'); const dA=Math.ceil((aibf-now)/864e5);
@@ -193,20 +232,19 @@ function seasonBanner(){
   const ram=new Date('2027-02-08'); const dR=Math.ceil((ram-now)/864e5);
   if(dR>0&&dR<190) msg.push(`Ramadan 2027 in ${dR} days: close gifting deals before mid-January`);
   if(m>=5&&m<=8) msg.push("Summer: hotel kids clubs at peak, pitch reading programs now");
-  document.getElementById('season').textContent = msg.join("  ·  ") || "No seasonal window active";
-}
+  document.getElementById('season').textContent = msg.join("  ·  ") || "No seasonal window active"; }
 
-/* ---------- views ---------- */
+/* ---------- nav ---------- */
 function go(v){
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
-  ['board','today','analytics','reports','health'].forEach(x=>document.getElementById('v-'+x).classList.toggle('hidden',x!==v));
-  if(v==='board')renderBoard(); if(v==='today')renderToday(); if(v==='analytics')renderAnalytics();
-  if(v==='reports')renderReports(); if(v==='health')renderHealth(); }
+  ['board','today','titles','analytics','reports','health','declined'].forEach(x=>document.getElementById('v-'+x).classList.toggle('hidden',x!==v));
+  if(v==='board')renderBoard(); if(v==='today')renderToday(); if(v==='titles')renderTitles();
+  if(v==='analytics')renderAnalytics(); if(v==='reports')renderReports(); if(v==='health')renderHealth();
+  if(v==='declined')renderDeclined(); }
 
 function filtered(){
   const q=(document.getElementById('q').value||'').toLowerCase(), c=fcat.value, ms=fscore.value;
-  return ACC.filter(a=>(!c||a.category===c)&&(!ms||(a.score||0)>=+ms)&&(!q||(a.name+' '+(a.hook||'')+' '+(a.notes||'')).toLowerCase().includes(q))); }
-
+  return active().filter(a=>(!c||a.category===c)&&(!ms||(a.score||0)>=+ms)&&(!q||(a.name+' '+(a.hook||'')+' '+(a.notes||'')).toLowerCase().includes(q))); }
 function lastTouch(id){const t=TOUCH.find(x=>x.account_id===id);return t?new Date(t.at):null;}
 function isStale(a){ if(!["Contacted","Meeting","Proposal","Pilot"].includes(a.status)) return false;
   const t=lastTouch(a.id)||new Date(a.updated_at); return (Date.now()-t)/864e5>14; }
@@ -224,24 +262,26 @@ function renderBoard(){
         ${isStale(a)?'<div class="flag">STALE 14+ days</div>':''}
         ${a.next_action_date&&new Date(a.next_action_date)<new Date()?'<div class="flag">OVERDUE action</div>':''}
         <span class="badge">${esc(a.category||'')}</span>${a.verified===false?'<span class="badge" style="color:var(--rust);border-color:var(--rust)">unverified</span>':''}
+        ${LISTS.some(l=>l.account_id===a.id)?'<span class="badge" style="color:var(--gold);border-color:var(--gold)">titles ready</span>':''}
       </div>`).join('');
     b.appendChild(col); });
   const inMotion=f.filter(a=>["Contacted","Meeting","Proposal","Pilot"].includes(a.status)).length;
   const wt=f.reduce((s,a)=>s+(+a.est_value_jod||0)*STAGE_PROB[a.status],0);
-  document.getElementById('boardKpis').innerHTML=kpi('Accounts',f.length)+kpi('In motion',inMotion)+kpi('Won',f.filter(a=>a.status==='Won').length)+kpi('Hot untouched (8+)',f.filter(a=>a.score>=8&&a.status==='To Contact').length)+kpi('Weighted pipeline',`JOD ${Math.round(wt).toLocaleString()}`); }
+  document.getElementById('boardKpis').innerHTML=kpi('Active accounts',f.length)+kpi('In motion',inMotion)+kpi('Won',f.filter(a=>a.status==='Won').length)+kpi('Hot untouched (8+)',f.filter(a=>a.score>=8&&a.status==='To Contact').length)+kpi('Weighted pipeline',`JOD ${Math.round(wt).toLocaleString()}`)+kpi('Declined (archived)',declined().length); }
 function kpi(l,v){return `<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div></div>`;}
 
 /* ---------- TODAY ---------- */
 function renderToday(){
   const el=document.getElementById('v-today'); const today=new Date().toISOString().slice(0,10);
-  const overdue=ACC.filter(a=>a.next_action_date&&a.next_action_date<today&&!['Won','Dead'].includes(a.status));
-  const due=ACC.filter(a=>a.next_action_date===today);
-  const stale=ACC.filter(isStale);
-  const hot=ACC.filter(a=>a.score>=8&&a.status==='To Contact').slice(0,5);
+  const A=active();
+  const overdue=A.filter(a=>a.next_action_date&&a.next_action_date<today&&!['Won','Dead'].includes(a.status));
+  const due=A.filter(a=>a.next_action_date===today);
+  const stale=A.filter(isStale);
+  const hot=A.filter(a=>a.score>=8&&a.status==='To Contact').slice(0,5);
   const row=(a,tag,cls)=>`<div class="rowitem"><span class="pill ${cls}">${tag}</span>
     <div class="grow"><b>${esc(a.name)}</b> <span style="color:var(--grey);font-size:12px">${esc(a.next_action||a.deal_model||'')}</span></div>
     <button class="btn small primary" onclick="openDossier(${a.id})">Open</button>
-    <button class="btn small" onclick="openDossier(${a.id},'outreach')">Compose</button></div>`;
+    <button class="btn small salesonly ${ROLE!=='sales'?'hidden':''}" onclick="openDossier(${a.id},'outreach')">Compose</button></div>`;
   el.innerHTML=`<h2 class="serif" style="color:var(--deep);margin-bottom:10px">Today's queue · ${new Date().toDateString()}</h2>
     ${overdue.length?`<h3 style="margin:10px 0 4px">Overdue (${overdue.length})</h3>`+overdue.map(a=>row(a,'OVERDUE','red')).join(''):''}
     ${due.length?`<h3 style="margin:10px 0 4px">Due today (${due.length})</h3>`+due.map(a=>row(a,'DUE','amber')).join(''):''}
@@ -249,17 +289,167 @@ function renderToday(){
     <h3 style="margin:10px 0 4px">Highest-value untouched</h3>${hot.map(a=>row(a,'HOT','red')).join('')||'<p style="color:var(--grey)">None, pipeline is worked. Good.</p>'}
     <p style="color:var(--grey);font-size:12px;margin-top:14px">Jordan rhythm: calls 10am-2pm land best. No business contact Friday 12-2pm. WhatsApp after a first email is expected, not pushy.</p>`; }
 
+/* ---------- TITLE LISTS (Shereen's module) ---------- */
+function renderTitles(){
+  const el=document.getElementById('v-titles');
+  const accOpts='<option value="">General (no specific client)</option>'+active().map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('');
+  const rows=LISTS.map(l=>{
+    const acc=ACC.find(a=>a.id===l.account_id);
+    return `<div class="rowitem">
+      <div class="grow"><b>${esc(l.name)}</b>
+        <span class="pill">${acc?esc(acc.name):'General'}</span>
+        <span style="color:var(--grey);font-size:11px"> ${l.parsed?.length||0} titles · by ${esc(l.uploaded_by)} · ${new Date(l.created_at).toLocaleDateString()}</span>
+        ${l.note?`<div style="font-size:11px;color:var(--grey)">${esc(l.note)}</div>`:''}</div>
+      ${l.file_path?`<button class="btn small" onclick="downloadList(${l.id})">Download Excel</button>`:''}
+      <button class="btn small primary" onclick="openCatalog(${l.id})">Catalog / PDF</button>
+      <button class="btn small" onclick="copyListText(${l.id})">Copy as text</button>
+      <button class="btn small" onclick="copyShare(${l.id})">Share link</button>
+      <button class="btn small danger" onclick="delList(${l.id})">Delete</button>
+    </div>`;}).join('');
+  el.innerHTML=`<h2 class="serif" style="color:var(--deep);margin-bottom:8px">Curated title lists</h2>
+    <p style="color:var(--grey);font-size:12px;margin-bottom:12px">Shereen uploads the client's curated Excel here. Ahmad and Fawaz download it next to the client's name, or open the branded catalog to print/PDF it with covers.</p>
+    <div class="sect"><h3>Upload a new list</h3>
+      <div class="grid2">
+        <div class="field"><label>Client account</label><select id="upAcc">${accOpts}</select></div>
+        <div class="field"><label>List name</label><input id="upName" placeholder="e.g. Kids Arabic bestsellers for Fairmont"></div>
+      </div>
+      <div class="field" style="margin-top:8px"><label>Note (what the client asked for)</label><input id="upNote" placeholder="e.g. requested 40 children's titles, AR+EN, under JOD 10"></div>
+      <div class="field" style="margin-top:8px"><label>Excel or CSV file</label><input id="upFile" type="file" accept=".xlsx,.xls,.csv"></div>
+      <div class="copyrow"><button class="btn primary" onclick="uploadList()">Upload list</button>
+      <span id="upMsg" style="font-size:12px;color:var(--grey);align-self:center"></span></div>
+      <p style="font-size:11px;color:var(--grey);margin-top:8px">Any columns work. For best catalog results include: Title, Author, ISBN, Price. Arabic headers are fine (العنوان، المؤلف، السعر).</p></div>
+    <h3 style="margin:14px 0 4px">All lists (${LISTS.length})</h3>${rows||'<p style="color:var(--grey)">No lists yet.</p>'}`; }
+
+const HDR_MAP=[[/^(title|book|name|العنوان|الكتاب|الاسم)/i,'title'],[/^(author|writer|المؤلف|الكاتب)/i,'author'],[/isbn|ردمك/i,'isbn'],[/price|سعر|jod|دينار/i,'price'],[/lang|لغة/i,'language'],[/categ|genre|تصنيف|فئة/i,'category'],[/note|ملاحظ/i,'note']];
+function mapHeader(h){for(const [re,k] of HDR_MAP) if(re.test(String(h).trim())) return k; return null;}
+async function uploadList(){
+  const f=document.getElementById('upFile').files[0];
+  const name=document.getElementById('upName').value.trim();
+  const msg=document.getElementById('upMsg');
+  if(!f||!name){msg.textContent='Choose a file and give the list a name.';return;}
+  msg.textContent='Reading file...';
+  try{
+    const buf=await f.arrayBuffer();
+    const wb=XLSX.read(buf,{type:'array'});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+    if(!raw.length){msg.textContent='File looks empty.';return;}
+    const headers=raw[0].map(String);
+    const keys=headers.map(mapHeader);
+    const parsed=raw.slice(1).filter(r=>r.some(c=>String(c).trim())).slice(0,600).map(r=>{
+      const o={extra:{}};
+      r.forEach((c,i)=>{const k=keys[i];const v=String(c).trim();
+        if(k&&!o[k])o[k]=v; else if(headers[i])o.extra[headers[i]]=v;});
+      if(!o.title){o.title=String(r.find(c=>String(c).trim())||'').trim();}
+      return o;});
+    msg.textContent='Uploading file...';
+    const path=`lists/${Date.now()}_${f.name.replace(/[^\w.\-]+/g,'_')}`;
+    const up=await sb.storage.from('b2b-files').upload(path,f);
+    if(up.error){msg.textContent='Storage error: '+up.error.message;return;}
+    const ins=await sb.from('b2b_lists').insert({
+      account_id:document.getElementById('upAcc').value||null,
+      name, note:document.getElementById('upNote').value.trim(),
+      file_path:path, file_name:f.name, parsed, uploaded_by:by()}).select();
+    if(ins.error){msg.textContent='DB error: '+ins.error.message;return;}
+    msg.textContent='';toast(`Uploaded: ${name} (${parsed.length} titles)`);
+    await loadAll(); renderTitles();
+  }catch(e){msg.textContent='Could not read this file: '+e.message;}
+}
+async function downloadList(id){
+  const l=LISTS.find(x=>x.id===id); if(!l||!l.file_path)return;
+  const {data,error}=await sb.storage.from('b2b-files').createSignedUrl(l.file_path,3600);
+  if(error){toast('Download error: '+error.message);return;}
+  window.open(data.signedUrl,'_blank'); }
+async function delList(id){
+  if(!confirm('Delete this list? The Excel file is removed too.'))return;
+  const l=LISTS.find(x=>x.id===id);
+  if(l&&l.file_path) await sb.storage.from('b2b-files').remove([l.file_path]);
+  await sb.from('b2b_lists').delete().eq('id',id);
+  toast('List deleted'); await loadAll(); renderTitles(); }
+function copyShare(id){
+  const l=LISTS.find(x=>x.id===id); if(!l)return;
+  const url=location.origin+location.pathname+'?share='+l.share_code;
+  navigator.clipboard.writeText(url).then(()=>toast('Share link copied (anyone with the link can view this list)')); }
+function copyListText(id){
+  const l=LISTS.find(x=>x.id===id); if(!l)return;
+  const acc=ACC.find(a=>a.id===l.account_id);
+  const lines=[`${l.name}${acc?' · '+acc.name:''}`,'UBCC / Legenda Bookstore · legendabookstore.com',''];
+  (l.parsed||[]).forEach((t,i)=>lines.push(`${i+1}. ${t.title}${t.author?' · '+t.author:''}${t.price?' · JOD '+t.price:''}${t.isbn?' · ISBN '+t.isbn:''}`));
+  navigator.clipboard.writeText(lines.join('\n')).then(()=>toast('List copied as text')); }
+
+/* ---------- CATALOG (branded, with covers) ---------- */
+const SPINE_COLORS=['#056A78','#008EA6','#A8894C','#B05C3B','#5c574b','#2e5f4e'];
+function bookCard(t,i){
+  const isbn=(t.isbn||'').replace(/[^0-9Xx]/g,'');
+  const cover=isbn?`https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg?default=false`:'';
+  const spine=`<div class="spine" style="background:${SPINE_COLORS[i%SPINE_COLORS.length]}">${esc((t.title||'?').charAt(0).toUpperCase())}</div>`;
+  return `<div class="book"><div class="cov" data-title="${esc(t.title)}" data-author="${esc(t.author||'')}" data-i="${i}">
+      ${cover?`<img src="${cover}" onerror="covErr(this)" data-i="${i}">`:spine}</div>
+    <div class="inf"><div class="ti">${esc(t.title||'Untitled')}</div>
+      <div class="au">${esc(t.author||'')}</div>
+      <div class="meta">${t.price?`<span class="pr">JOD ${esc(t.price)}</span>`:'<span></span>'}<span class="is">${esc(t.isbn||'')}</span></div>
+    </div></div>`; }
+async function fillMissingCovers(container){
+  const covs=[...container.querySelectorAll('.cov')];
+  let budget=30;
+  for(const c of covs){
+    if(c.querySelector('img'))continue; if(budget--<=0)break;
+    const q=encodeURIComponent(`intitle:${c.dataset.title} ${c.dataset.author?('inauthor:'+c.dataset.author):''}`);
+    try{
+      const r=await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=1`);
+      const j=await r.json();
+      const th=j.items?.[0]?.volumeInfo?.imageLinks?.thumbnail;
+      if(th){const img=document.createElement('img');img.src=th.replace('http://','https://');
+        c.innerHTML='';c.appendChild(img);}
+    }catch(e){/* offline or rate limited: spine stays */}
+  } }
+function covErr(img){
+  const cov=img.parentElement; if(!cov)return;
+  const i=+(cov.dataset.i||0), t=cov.dataset.title||'?';
+  cov.innerHTML=`<div class="spine" style="background:${SPINE_COLORS[i%SPINE_COLORS.length]}">${esc(t.charAt(0).toUpperCase())}</div>`; }
+function catalogHTML(listName, clientName, note, parsed, internal){
+  return `
+  <div class="cat-head"><div class="brand">UBCC · Legenda Bookstore · Amman</div>
+    <h1>${esc(listName)}</h1>
+    <div class="sub">${clientName?('Curated for '+esc(clientName)+' · '):''}${esc(note||'')} · ${parsed.length} titles · ${new Date().toLocaleDateString()}</div></div>
+  ${internal?`<div class="cat-tools">
+    <button class="btn primary" onclick="printCatalog()">Print / Save as PDF</button>
+    <button class="btn" onclick="closeCatalog()">Close</button>
+    <span style="font-size:11px;color:var(--grey);align-self:center">Covers load automatically from ISBN or title. Missing covers show a colored spine, still looks clean in print.</span></div>`:''}
+  <div class="cat-grid" id="catGrid">${parsed.map((t,i)=>bookCard(t,i)).join('')}</div>
+  <div class="cat-foot">Prepared by UBCC / Legenda Bookstore · legendabookstore.com · If it is listed, it is available. Prices in JOD include local delivery in Amman.</div>`; }
+function openCatalog(id){
+  const l=LISTS.find(x=>x.id===id); if(!l)return;
+  const acc=ACC.find(a=>a.id===l.account_id);
+  const c=document.getElementById('catalog');
+  c.innerHTML=catalogHTML(l.name, acc?acc.name:'', l.note, l.parsed||[], true);
+  c.classList.remove('hidden'); document.body.classList.add('printing');
+  fillMissingCovers(c); }
+function closeCatalog(){document.getElementById('catalog').classList.add('hidden');document.body.classList.remove('printing');
+  if(shareCode){location.href=location.pathname;} }
+function printCatalog(){window.print();}
+async function renderSharedCatalog(code){
+  const c=document.getElementById('catalog');
+  c.innerHTML='<div style="padding:40px;font-family:Georgia,serif;color:#056A78">Loading selection...</div>';
+  c.classList.remove('hidden'); document.body.classList.add('printing');
+  const {data,error}=await sb.rpc('b2b_get_shared_list',{code});
+  if(error||!data){c.innerHTML='<div style="padding:40px">This link is not valid anymore.</div>';return;}
+  c.innerHTML=catalogHTML(data.name, data.account, data.note, data.parsed||[], false)+
+   `<div class="cat-tools" style="border-top:1px solid var(--line)"><button class="btn primary" onclick="printCatalog()">Print / Save as PDF</button></div>`;
+  fillMissingCovers(c); }
+
 /* ---------- ANALYTICS ---------- */
 function renderAnalytics(){
-  const cnt=Object.fromEntries(STATUSES.map(s=>[s,ACC.filter(a=>a.status===s).length]));
-  const closedCats={}; ACC.forEach(a=>{if(['Won','Dead'].includes(a.status)){closedCats[a.category]=closedCats[a.category]||{w:0,d:0}; a.status==='Won'?closedCats[a.category].w++:closedCats[a.category].d++;}});
-  const catCount={}; ACC.forEach(a=>{catCount[a.category||'Other']=(catCount[a.category||'Other']||0)+1;});
+  const A=active();
+  const cnt=Object.fromEntries(STATUSES.map(s=>[s,A.filter(a=>a.status===s).length]));
+  const closedCats={}; A.forEach(a=>{if(['Won','Dead'].includes(a.status)){closedCats[a.category]=closedCats[a.category]||{w:0,d:0}; a.status==='Won'?closedCats[a.category].w++:closedCats[a.category].d++;}});
+  const catCount={}; A.forEach(a=>{catCount[a.category||'Other']=(catCount[a.category||'Other']||0)+1;});
   const topCats=Object.entries(catCount).sort((a,b)=>b[1]-a[1]).slice(0,8);
   const weeks=[...Array(8)].map((_,i)=>{const d=new Date();d.setDate(d.getDate()-7*(7-i));return d;});
   const wk=weeks.map(w=>{const w2=new Date(w);w2.setDate(w2.getDate()+7);return TOUCH.filter(t=>{const x=new Date(t.at);return x>=w&&x<w2;}).length;});
-  const wt=ACC.reduce((s,a)=>s+(+a.est_value_jod||0)*STAGE_PROB[a.status],0);
-  const resp=ACC.filter(a=>a.response&&a.response.trim()).length, sent=ACC.filter(a=>a.outreach_date&&String(a.outreach_date).trim()).length;
-  document.getElementById('anaKpis').innerHTML=kpi('Weighted pipeline',`JOD ${Math.round(wt).toLocaleString()}`)+kpi('Outreach sent',sent)+kpi('Responses',resp)+kpi('Response rate',sent?Math.round(resp/sent*100)+'%':'0%')+kpi('Meetings+',cnt['Meeting']+cnt['Proposal']+cnt['Pilot']+cnt['Won'])+kpi('Won / Dead',`${cnt['Won']} / ${cnt['Dead']}`);
+  const wt=A.reduce((s,a)=>s+(+a.est_value_jod||0)*STAGE_PROB[a.status],0);
+  const resp=A.filter(a=>a.response&&a.response.trim()).length, sent=A.filter(a=>a.outreach_date&&String(a.outreach_date).trim()).length;
+  document.getElementById('anaKpis').innerHTML=kpi('Weighted pipeline',`JOD ${Math.round(wt).toLocaleString()}`)+kpi('Outreach sent',sent)+kpi('Responses',resp)+kpi('Response rate',sent?Math.round(resp/sent*100)+'%':'0%')+kpi('Meetings+',cnt['Meeting']+cnt['Proposal']+cnt['Pilot']+cnt['Won'])+kpi('Won / Dead / Declined',`${cnt['Won']} / ${cnt['Dead']} / ${declined().length}`);
   const mk=(id,cfg)=>{charts[id]&&charts[id].destroy();charts[id]=new Chart(document.getElementById(id),cfg);};
   mk('cFunnel',{type:'bar',data:{labels:STATUSES,datasets:[{data:STATUSES.map(s=>cnt[s]),backgroundColor:['#8a8578','#A8894C','#056A78','#008EA6','#B05C3B','#2e7d32','#c62828']}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}}});
   mk('cWin',{type:'bar',data:{labels:Object.keys(closedCats),datasets:[{label:'Won',data:Object.values(closedCats).map(x=>x.w),backgroundColor:'#2e7d32'},{label:'Dead',data:Object.values(closedCats).map(x=>x.d),backgroundColor:'#c62828'}]},options:{scales:{x:{stacked:true},y:{stacked:true,ticks:{precision:0}}}}});
@@ -280,55 +470,103 @@ async function renderReports(){
   const {data}=await sb.from('b2b_reports').select('*').order('run_date',{ascending:false}).limit(12);
   el.innerHTML=(data&&data.length)?data.map(r=>`<div class="report"><h3 class="serif">${esc(r.title||('Radar '+r.run_date))} · ${r.run_date}</h3><pre>${esc(r.body_md)}</pre></div>`).join(''):'<p style="color:var(--grey)">No radar reports yet. The Monday automation posts here after each run.</p>'; }
 
-/* ---------- DATA HEALTH (self-improvement surface) ---------- */
+/* ---------- DATA HEALTH ---------- */
 function renderHealth(){
-  const el=document.getElementById('v-health');
-  const unv=ACC.filter(a=>a.verified===false);
-  const nodm=ACC.filter(a=>!a.decision_maker&&!['Won','Dead'].includes(a.status));
-  const nocontact=ACC.filter(a=>!a.phone&&!a.email&&!a.instagram&&a.status!=='Dead');
-  const deadlink=ACC.filter(a=>a.link_ok===false);
-  const names={}; const dups=[]; ACC.forEach(a=>{const k=a.name.toLowerCase().replace(/[^a-z؀-ۿ]/g,'');(names[k]=names[k]||[]).push(a.name);});
+  const el=document.getElementById('v-health'); const A=active();
+  const unv=A.filter(a=>a.verified===false);
+  const nodm=A.filter(a=>!a.decision_maker&&!['Won','Dead'].includes(a.status));
+  const nocontact=A.filter(a=>!a.phone&&!a.email&&!a.instagram&&a.status!=='Dead');
+  const deadlink=A.filter(a=>a.link_ok===false);
+  const names={}; const dups=[]; A.forEach(a=>{const k=a.name.toLowerCase().replace(/[^a-z؀-ۿ]/g,'');(names[k]=names[k]||[]).push(a.name);});
   Object.values(names).filter(v=>v.length>1).forEach(v=>dups.push(v.join(' = ')));
   const dir=SETTINGS.radar_directives||{};
-  const li=(a)=>`<div class="rowitem"><div class="grow"><b>${esc(a.name)}</b> <span class="pill">${esc(a.category||'')}</span></div><button class="btn small" onclick="openDossier(${a.id})">Fix</button></div>`;
+  const li=(a)=>`<div class="rowitem"><div class="grow"><b>${esc(a.name)}</b> <span class="pill">${esc(a.category||'')}</span></div><button class="btn small" onclick="openDossier(${a.id})">Open</button></div>`;
   el.innerHTML=`<h2 class="serif" style="color:var(--deep)">Data health · the radar's self-check</h2>
-  <p style="color:var(--grey);font-size:12px;margin:6px 0 12px">The Monday radar verifies links, flags unverified claims, and rebalances next week's research toward categories that actually convert. Its current focus: <b>${esc((dir.focus_next||[]).join(', '))}</b> (last run ${dir.last_run??0}).</p>
-  <div class="sect"><h3>Unverified accounts (${unv.length}) · radar will verify, or verify manually before outreach</h3>${unv.map(li).join('')||'None'}</div>
+  <p style="color:var(--grey);font-size:12px;margin:6px 0 12px">Every Monday the radar verifies sources, corrects wrong hooks, and rebalances research toward categories that convert. Current focus: <b>${esc((dir.focus_next||[]).join(', '))}</b> (run ${dir.last_run??0}).</p>
+  <div class="sect"><h3>Unverified accounts (${unv.length})</h3>${unv.map(li).join('')||'None'}</div>
   <div class="sect"><h3>Dead source links flagged by radar (${deadlink.length})</h3>${deadlink.map(li).join('')||'None'}</div>
   <div class="sect"><h3>No decision maker mapped (${nodm.length})</h3>${nodm.slice(0,15).map(li).join('')||'None'}</div>
   <div class="sect"><h3>No contact channel at all (${nocontact.length})</h3>${nocontact.slice(0,15).map(li).join('')||'None'}</div>
   <div class="sect"><h3>Possible duplicates (${dups.length})</h3>${dups.map(d=>`<div class="rowitem">${esc(d)}</div>`).join('')||'None'}</div>`; }
 
+/* ---------- DECLINED PAGE ---------- */
+function renderDeclined(){
+  const el=document.getElementById('v-declined'); const D=declined();
+  const reasons={}; D.forEach(a=>{reasons[a.declined_reason||'No reason recorded']=(reasons[a.declined_reason||'No reason recorded']||0)+1;});
+  el.innerHTML=`<h2 class="serif" style="color:var(--deep);margin-bottom:6px">Declined contacts · ${D.length}</h2>
+  <p style="color:var(--grey);font-size:12px;margin-bottom:12px">Archived accounts that do not fit the B2B strategy. The radar never suggests these again. Restoring sends them back to "To Contact".</p>
+  <div class="kpis">${Object.entries(reasons).map(([r,n])=>kpi(r,n)).join('')}</div>
+  ${D.map(a=>`<div class="rowitem">
+    <div class="grow"><b>${esc(a.name)}</b> <span class="pill">${esc(a.category||'')}</span>
+      <div style="font-size:12px;margin-top:4px"><span class="pill red">${esc(a.declined_reason||'-')}</span>
+      <span style="color:var(--grey);font-size:11px"> by ${esc(a.declined_by||'-')} · ${a.declined_at?new Date(a.declined_at).toLocaleDateString():''}</span></div>
+      ${a.notes?`<div style="font-size:11px;color:var(--grey);margin-top:3px">${esc(a.notes)}</div>`:''}</div>
+    <button class="btn small" onclick="openDossier(${a.id})">Dossier</button>
+    ${canEdit()?`<button class="btn small primary" onclick="restoreAcc(${a.id})">Restore</button>`:''}
+  </div>`).join('')||'<p style="color:var(--grey)">Nothing declined yet.</p>'}`; }
+function openDeclineModal(){
+  if(!CUR||!canEdit())return;
+  const m=document.getElementById('modal');
+  m.classList.remove('hidden');
+  m.innerHTML=`<div class="box"><h3 class="serif">Decline ${esc(CUR.name)}</h3>
+    <div class="field"><label>Reason</label><select id="decReason">${DECLINE_REASONS.map(r=>`<option>${r}</option>`).join('')}</select></div>
+    <div class="field" style="margin-top:8px"><label>Details (optional, saved to history)</label><textarea id="decDetail" rows="2" placeholder="e.g. met them in May, only want free stock"></textarea></div>
+    <div class="copyrow" style="margin-top:12px"><button class="btn danger" onclick="confirmDecline()">Decline and archive</button>
+    <button class="btn" onclick="document.getElementById('modal').classList.add('hidden')">Cancel</button></div></div>`; }
+async function confirmDecline(){
+  const reason=document.getElementById('decReason').value, detail=document.getElementById('decDetail').value;
+  const {error}=await sb.from('b2b_accounts').update({status:'Declined',declined_reason:reason,declined_at:new Date().toISOString(),declined_by:by(),updated_by:by()}).eq('id',CUR.id);
+  if(error){toast('Error: '+error.message);return;}
+  await sb.from('b2b_touches').insert({account_id:CUR.id,kind:'declined',detail:reason+(detail?' · '+detail:''),by_user:by()});
+  document.getElementById('modal').classList.add('hidden'); closeDossier();
+  toast('Archived to Declined'); await loadAll(); renderBoard(); }
+async function restoreAcc(id){
+  const a=ACC.find(x=>x.id===id); if(!a)return;
+  const {error}=await sb.from('b2b_accounts').update({status:'To Contact',declined_reason:null,declined_at:null,declined_by:null,updated_by:by()}).eq('id',id);
+  if(error){toast('Error: '+error.message);return;}
+  await sb.from('b2b_touches').insert({account_id:id,kind:'restored',detail:'Restored from Declined (was: '+(a.declined_reason||'-')+')',by_user:by()});
+  toast('Restored to board'); await loadAll(); renderDeclined(); }
+
 /* ---------- DOSSIER ---------- */
 let CUR=null;
 function openDossier(id,tab){
   CUR=ACC.find(a=>a.id===id); if(!CUR)return;
-  const a=CUR, tl=TOUCH.filter(t=>t.account_id===id);
+  const a=CUR, tl=TOUCH.filter(t=>t.account_id===id), myLists=LISTS.filter(l=>l.account_id===id);
+  const ro=!canEdit();
   document.getElementById('overlay').classList.remove('hidden');
   const d=document.getElementById('dossier'); d.classList.remove('hidden');
   d.innerHTML=`
   <button class="btn small" style="float:right" onclick="closeDossier()">Close ✕</button>
   <h2 class="serif">${esc(a.name)}</h2>
-  <div style="color:var(--grey);font-size:12px">${esc(a.category||'')} · ${esc(a.area||'')} · Score ${a.score??'?'} ${a.verified===false?'· <b style="color:var(--rust)">UNVERIFIED</b>':''}</div>
-  <div class="statusrow">${STATUSES.map(s=>`<button class="${a.status===s?'on':''}" onclick="setStatus('${s}')">${s}</button>`).join('')}</div>
+  <div style="color:var(--grey);font-size:12px">${esc(a.category||'')} · ${esc(a.area||'')} · Score ${a.score??'?'} ${a.verified===false?'· <b style="color:var(--rust)">UNVERIFIED</b>':''} ${a.status==='Declined'?'· <b style="color:var(--bad)">DECLINED: '+esc(a.declined_reason||'')+'</b>':''}</div>
+  ${ro?'<p style="font-size:11px;color:var(--gold);margin-top:6px">Curation view: you can see everything and manage title lists; pipeline editing stays with Ahmad and Fawaz.</p>':''}
+  ${!ro&&a.status!=='Declined'?`<div class="statusrow">${STATUSES.map(s=>`<button class="${a.status===s?'on':''}" onclick="setStatus('${s}')">${s}</button>`).join('')}
+    <button style="color:var(--bad);border-color:var(--bad)" onclick="openDeclineModal()">Decline...</button></div>`:''}
+  ${!ro&&a.status==='Declined'?`<div class="copyrow"><button class="btn primary" onclick="restoreAcc(${a.id});closeDossier()">Restore to board</button></div>`:''}
 
   <div class="sect"><h3>Why this account (research hook)</h3>
     <div style="font-size:13px;line-height:1.6">${esc(a.hook||'No hook yet')}</div>
     <div style="font-size:11px;color:var(--grey);margin-top:4px">Source: ${esc(a.source||'-')} · Decision maker: ${esc(a.decision_maker||'-')} · Model: ${esc(a.deal_model||'-')}</div></div>
 
-  <div class="sect"><h3>Contact + follow-up</h3><div class="grid2">
-    <div class="field"><label>Contact person</label><input id="f_contact_person" value="${esc(a.contact_person)}"></div>
-    <div class="field"><label>Phone (9627XXXXXXXX)</label><input id="f_phone" value="${esc(a.phone)}"></div>
-    <div class="field"><label>Email</label><input id="f_email" value="${esc(a.email)}"></div>
-    <div class="field"><label>Instagram</label><input id="f_instagram" value="${esc(a.instagram)}"></div>
-    <div class="field"><label>Next action</label><input id="f_next_action" value="${esc(a.next_action)}"></div>
-    <div class="field"><label>Next action date</label><input id="f_next_action_date" type="date" value="${a.next_action_date||''}"></div>
-    <div class="field"><label>Est. deal value (JOD/year)</label><input id="f_est_value_jod" type="number" value="${a.est_value_jod||''}"></div>
-    <div class="field"><label>Decision maker</label><input id="f_decision_maker" value="${esc(a.decision_maker)}"></div></div>
-    <div class="field" style="margin-top:8px"><label>Notes</label><textarea id="f_notes" rows="2">${esc(a.notes)}</textarea></div>
-    <div class="copyrow"><button class="btn primary" onclick="saveFields()">Save</button></div></div>
+  <div class="sect"><h3>Title lists for this client (${myLists.length})</h3>
+    ${myLists.map(l=>`<div class="rowitem"><div class="grow"><b>${esc(l.name)}</b> <span style="color:var(--grey);font-size:11px">${l.parsed?.length||0} titles · ${esc(l.uploaded_by)}</span></div>
+      ${l.file_path?`<button class="btn small" onclick="downloadList(${l.id})">Excel</button>`:''}
+      <button class="btn small primary" onclick="openCatalog(${l.id})">Catalog</button>
+      <button class="btn small" onclick="copyShare(${l.id})">Share</button></div>`).join('')||'<p style="color:var(--grey);font-size:12px">None yet. Shereen adds them in the Title Lists tab.</p>'}</div>
 
-  <div class="sect" id="outreachSect"><h3>Outreach cockpit · tailored email creator</h3>
+  <div class="sect"><h3>Contact + follow-up</h3><div class="grid2">
+    <div class="field"><label>Contact person</label><input id="f_contact_person" value="${esc(a.contact_person)}" ${ro?'disabled':''}></div>
+    <div class="field"><label>Phone (9627XXXXXXXX)</label><input id="f_phone" value="${esc(a.phone)}" ${ro?'disabled':''}></div>
+    <div class="field"><label>Email</label><input id="f_email" value="${esc(a.email)}" ${ro?'disabled':''}></div>
+    <div class="field"><label>Instagram</label><input id="f_instagram" value="${esc(a.instagram)}" ${ro?'disabled':''}></div>
+    <div class="field"><label>Next action</label><input id="f_next_action" value="${esc(a.next_action)}" ${ro?'disabled':''}></div>
+    <div class="field"><label>Next action date</label><input id="f_next_action_date" type="date" value="${a.next_action_date||''}" ${ro?'disabled':''}></div>
+    <div class="field"><label>Est. deal value (JOD/year)</label><input id="f_est_value_jod" type="number" value="${a.est_value_jod||''}" ${ro?'disabled':''}></div>
+    <div class="field"><label>Decision maker</label><input id="f_decision_maker" value="${esc(a.decision_maker)}" ${ro?'disabled':''}></div></div>
+    <div class="field" style="margin-top:8px"><label>Notes</label><textarea id="f_notes" rows="2" ${ro?'disabled':''}>${esc(a.notes)}</textarea></div>
+    ${ro?'':'<div class="copyrow"><button class="btn primary" onclick="saveFields()">Save</button></div>'}</div>
+
+  ${ro?'':`<div class="sect" id="outreachSect"><h3>Outreach cockpit · tailored email creator</h3>
     <div class="grid2">
       <div class="field"><label>Goal</label><select id="g_goal"><option value="first">First contact</option><option value="follow">Follow-up (no reply)</option><option value="meeting">Confirm meeting</option><option value="proposal">After proposal</option><option value="revive">Revive cold deal</option></select></div>
       <div class="field"><label>Language</label><select id="g_lang"><option value="en">English</option><option value="ar">Arabic</option><option value="both">Both</option></select></div></div>
@@ -347,37 +585,44 @@ function openDossier(id,tab){
 
   <div class="sect"><h3>Log a touch</h3>
     <div class="copyrow">${['call','whatsapp','email','meeting','visit','note'].map(k=>`<button class="btn small" onclick="logTouch('${k}')">${k}</button>`).join('')}</div>
-    <div class="field" style="margin-top:6px"><input id="touchDetail" placeholder="What happened? (saved with your name + time)"></div>
-    <div id="touchList">${tl.map(t=>`<div class="touch"><b>${esc(t.kind)}</b> ${esc(t.detail)}<div class="d">${new Date(t.at).toLocaleString()} · ${esc(t.by_user)}</div></div>`).join('')||'<p style="color:var(--grey);font-size:12px;margin-top:6px">No touches logged yet.</p>'}</div></div>`;
-  if(tab==='outreach') document.getElementById('outreachSect').scrollIntoView(); }
+    <div class="field" style="margin-top:6px"><input id="touchDetail" placeholder="What happened? (saved with your name + time)"></div></div>`}
+  <div class="sect"><h3>History</h3>
+    <div id="touchList">${tl.map(t=>`<div class="touch"><b>${esc(t.kind)}</b> ${esc(t.detail)}<div class="d">${new Date(t.at).toLocaleString()} · ${esc(t.by_user)}</div></div>`).join('')||'<p style="color:var(--grey);font-size:12px;margin-top:6px">No touches logged yet.</p>'}</div>
+  </div>`;
+  if(tab==='outreach'&&!ro) document.getElementById('outreachSect').scrollIntoView(); }
 function closeDossier(){document.getElementById('overlay').classList.add('hidden');document.getElementById('dossier').classList.add('hidden');CUR=null;}
 async function setStatus(s){
-  if(!CUR)return;
-  await sb.from('b2b_accounts').update({status:s,updated_by:by()}).eq('id',CUR.id);
+  if(!CUR||!canEdit())return;
+  const {error}=await sb.from('b2b_accounts').update({status:s,updated_by:by()}).eq('id',CUR.id);
+  if(error){toast('Error: '+error.message);return;}
   await sb.from('b2b_touches').insert({account_id:CUR.id,kind:'status',detail:'Moved to '+s,by_user:by()});
-  toast('Status: '+s); await loadAll(); openDossier(CUR?CUR.id:null); renderBoard(); }
+  toast('Status: '+s); const id=CUR.id; await loadAll(); openDossier(id); renderBoard(); }
 async function saveFields(){
+  if(!canEdit())return;
   const u={}; ['contact_person','phone','email','instagram','next_action','next_action_date','est_value_jod','decision_maker','notes'].forEach(k=>{const el=document.getElementById('f_'+k); if(el) u[k]=el.value||null;});
   if(u.est_value_jod==='')u.est_value_jod=null; if(u.next_action_date==='')u.next_action_date=null;
   u.updated_by=by();
   const {error}=await sb.from('b2b_accounts').update(u).eq('id',CUR.id);
   toast(error?('Error: '+error.message):'Saved'); await loadAll(); renderBoard(); }
 async function logTouch(kind){
+  if(!canEdit())return;
   const detail=document.getElementById('touchDetail').value||'';
-  await sb.from('b2b_touches').insert({account_id:CUR.id,kind,detail,by_user:by()});
+  const {error}=await sb.from('b2b_touches').insert({account_id:CUR.id,kind,detail,by_user:by()});
+  if(error){toast('Error: '+error.message);return;}
   if(['call','whatsapp','email'].includes(kind)&&!CUR.outreach_date)
     await sb.from('b2b_accounts').update({outreach_date:new Date().toISOString().slice(0,10),updated_by:by()}).eq('id',CUR.id);
-  toast('Logged '+kind); await loadAll(); openDossier(CUR.id); }
+  toast('Logged '+kind); const id=CUR.id; await loadAll(); openDossier(id); }
 async function openNew(){
+  if(!canEdit())return;
   const name=prompt("Account name?"); if(!name)return;
   const {error}=await sb.from('b2b_accounts').insert({name,category:'Other',status:'To Contact',date_added:new Date().toISOString().slice(0,10),updated_by:by(),run:-1});
   if(error){toast(error.message);return;} await loadAll(); renderBoard(); }
 
-/* ---------- EMAIL CREATOR (deterministic, uses only stored facts) ---------- */
+/* ---------- EMAIL CREATOR ---------- */
 const SEG_VALUE = [
  [/coffee|cafe|study/i, {pain:"guests finish their drink and leave", gain:"a curated shelf keeps guests seated longer and gives your space an identity people photograph and share"}],
  [/kids|baby|toy|pharma/i, {pain:"parents want meaningful add-ons at checkout", gain:"board books and bedtime stories sell beside your products with zero inventory risk"}],
- [/hotel|resort|lodge|lounge|tourism/i, {pain:"kids clubs and lobbies offer screens, not memories", gain:"a curated reading corner becomes a guest-experience upgrade reviewers mention"}],
+ [/hotel|resort|lodge|lounge|tourism|eco/i, {pain:"kids clubs and lobbies offer screens, not memories", gain:"a curated reading corner becomes a guest-experience upgrade reviewers mention"}],
  [/coworking|hub|incubator/i, {pain:"members expect more than desks", gain:"a rotating business and startup shelf becomes a perk that costs you nothing upfront"}],
  [/csr|bank|corporate|insurance|telecom/i, {pain:"CSR programs need visible, reportable education impact", gain:"branded book distributions deliver measurable impact numbers for your sustainability report"}],
  [/ngo|un-|foundation|institution|library|cultural|museum|edu/i, {pain:"program budgets need reliable local fulfillment", gain:"20,000+ titles in Amman stock, JOD invoicing and 5-branch delivery remove import risk from your program"}],
@@ -387,128 +632,30 @@ const SEG_VALUE = [
 function segVal(cat){for(const [re,v] of SEG_VALUE) if(re.test(cat||'')) return v; return {pain:"finding reliable book supply in Jordan is harder than it should be", gain:"a curated selection from 20,000+ titles, delivered and rotated by us on flexible terms"};}
 function greet(a){const p=(a.contact_person||'').trim();return p?p.split(' ')[0]:'there';}
 function greetAr(a){const p=(a.contact_person||'').trim();return p?('أستاذ/ة '+p.split(' ')[0]):'حضرتكم';}
-
-function buildEmail(a, goal, lang){
+function buildEmail(a, goal){
   const v=segVal(a.category), hook=(a.hook||'').split(';')[0], model=a.deal_model||'consignment (you pay only on sales)';
   const EN={
-   first:{subj:`A book corner idea for ${a.name}`, body:
-`Dear ${greet(a)},
-
-I am Ahmad El-Hafez from UBCC / Legenda Bookstore, a Jordanian book distributor since 1995 with 20,000+ English and Arabic titles.
-
-${hook?`I am writing because ${hook.charAt(0).toLowerCase()+hook.slice(1)}.`:`I am writing because ${v.pain}.`} We believe ${v.gain}.
-
-Concretely: ${model}, monthly settlement, we curate, deliver and rotate everything. Our shelves at partner venues in Amman are already live.
-
-Would you be open to a 20-minute coffee this week or next? I will bring a sample selection matched to ${a.name}.
-
-Best regards,
-Ahmad El-Hafez
-UBCC / Legenda Bookstore · legendabookstore.com`},
-   follow:{subj:`Following up: books at ${a.name}`, body:
-`Dear ${greet(a)},
-
-Following up on my earlier note about a curated book presence at ${a.name}. I know weeks get busy.
-
-One line of context: ${v.gain}, on ${model}, so there is no cost to try.
-
-Would 20 minutes over coffee this week work? If another person handles this, I would appreciate the right introduction.
-
-Best regards,
-Ahmad El-Hafez · UBCC / Legenda`},
-   meeting:{subj:`Confirming our meeting · UBCC / Legenda`, body:
-`Dear ${greet(a)},
-
-Thank you for making the time. Confirming our meeting; I will bring a sample selection for ${a.name} and a one-page proposal covering selection, ${model}, and how settlement works.
-
-If any colleague should join, they are most welcome.
-
-See you soon,
-Ahmad El-Hafez · UBCC / Legenda`},
-   proposal:{subj:`Next step on our proposal · ${a.name}`, body:
-`Dear ${greet(a)},
-
-I hope the proposal landed well. Two things worth repeating: there is no upfront cost on ${model}, and we handle curation, delivery and rotation entirely.
-
-If terms need adjusting, payment schedule and selection are both flexible; tell me what would make this an easy yes.
-
-Shall we close this over coffee this week?
-
-Best regards,
-Ahmad El-Hafez · UBCC / Legenda`},
-   revive:{subj:`Picking our conversation back up · ${a.name}`, body:
-`Dear ${greet(a)},
-
-We spoke a while back about books at ${a.name}; timing was not right then. Two things changed: our partner-venue program has grown across Amman, and the coming season is the strongest window for it.
-
-The offer stands: ${model}, zero upfront, we do the work. Worth a fresh 20 minutes?
-
-Best regards,
-Ahmad El-Hafez · UBCC / Legenda`}};
+   first:{subj:`A book corner idea for ${a.name}`, body:`Dear ${greet(a)},\n\nI am Ahmad El-Hafez from UBCC / Legenda Bookstore, a Jordanian book distributor since 1995 with 20,000+ English and Arabic titles.\n\n${hook?`I am writing because ${hook.charAt(0).toLowerCase()+hook.slice(1)}.`:`I am writing because ${v.pain}.`} We believe ${v.gain}.\n\nConcretely: ${model}, monthly settlement, we curate, deliver and rotate everything. Our shelves at partner venues in Amman are already live.\n\nWould you be open to a 20-minute coffee this week or next? I will bring a sample selection matched to ${a.name}.\n\nBest regards,\nAhmad El-Hafez\nUBCC / Legenda Bookstore · legendabookstore.com`},
+   follow:{subj:`Following up: books at ${a.name}`, body:`Dear ${greet(a)},\n\nFollowing up on my earlier note about a curated book presence at ${a.name}. I know weeks get busy.\n\nOne line of context: ${v.gain}, on ${model}, so there is no cost to try.\n\nWould 20 minutes over coffee this week work? If another person handles this, I would appreciate the right introduction.\n\nBest regards,\nAhmad El-Hafez · UBCC / Legenda`},
+   meeting:{subj:`Confirming our meeting · UBCC / Legenda`, body:`Dear ${greet(a)},\n\nThank you for making the time. Confirming our meeting; I will bring a sample selection for ${a.name} and a one-page proposal covering selection, ${model}, and how settlement works.\n\nIf any colleague should join, they are most welcome.\n\nSee you soon,\nAhmad El-Hafez · UBCC / Legenda`},
+   proposal:{subj:`Next step on our proposal · ${a.name}`, body:`Dear ${greet(a)},\n\nI hope the proposal landed well. Two things worth repeating: there is no upfront cost on ${model}, and we handle curation, delivery and rotation entirely.\n\nIf terms need adjusting, payment schedule and selection are both flexible; tell me what would make this an easy yes.\n\nShall we close this over coffee this week?\n\nBest regards,\nAhmad El-Hafez · UBCC / Legenda`},
+   revive:{subj:`Picking our conversation back up · ${a.name}`, body:`Dear ${greet(a)},\n\nWe spoke a while back about books at ${a.name}; timing was not right then. Two things changed: our partner-venue program has grown across Amman, and the coming season is the strongest window for it.\n\nThe offer stands: ${model}, zero upfront, we do the work. Worth a fresh 20 minutes?\n\nBest regards,\nAhmad El-Hafez · UBCC / Legenda`}};
+  const arModel = (model.toLowerCase().includes('consignment'))?'نظام أمانة، بتدفعوا بس على المبيع':'ترتيب مرن يناسبكم';
   const AR={
-   first:{subj:`فكرة ركن كتب في ${a.name}`, body:
-`السلام عليكم ${greetAr(a)}،
-
-معك أحمد الحافظ من UBCC / مكتبة ليجيندا، موزع كتب أردني منذ 1995 وعندنا أكثر من 20,000 عنوان عربي وإنجليزي.
-
-سبب تواصلي: ${v.gain==="a curated selection from 20,000+ titles, delivered and rotated by us on flexible terms"?"ركن كتب مختار بعناية بيضيف قيمة حقيقية لمساحتكم":"ركن كتب مختار بعناية بيطوّل جلسة الزبون وبيعطي المكان هوية بتنحكى"}.
-
-عمليًا: ${model.includes('consignment')||model.includes('Consignment')?'نظام أمانة، بتدفعوا بس على المبيع':'ترتيب مرن يناسبكم'}، تسوية شهرية، ونحن منجهز ومنوصّل ومنبدّل الكتب.
-
-هل يناسبكم لقاء قصير على قهوة هالأسبوع أو الجاي؟ بجيب معي تشكيلة مقترحة خاصة بـ${a.name}.
-
-مع الاحترام،
-أحمد الحافظ · UBCC / ليجيندا`},
-   follow:{subj:`متابعة: الكتب في ${a.name}`, body:
-`السلام عليكم ${greetAr(a)}،
-
-بتابع رسالتي السابقة بخصوص ركن الكتب في ${a.name}، وبعرف إنه الجدول بكون مزحوم.
-
-باختصار: ما في أي تكلفة مقدمة، نحن منجهز كل شي وبتدفعوا بس على المبيع.
-
-بيناسبكم 20 دقيقة على قهوة هالأسبوع؟ وإذا في شخص ثاني مسؤول عن هالموضوع، بقدّر التحويلة الصحيحة.
-
-مع الاحترام،
-أحمد الحافظ · UBCC / ليجيندا`},
-   meeting:{subj:`تأكيد موعدنا · UBCC / ليجيندا`, body:
-`السلام عليكم ${greetAr(a)}،
-
-شكرًا لوقتكم. بأكد موعدنا، ورح أجيب معي تشكيلة كتب مقترحة لـ${a.name} وورقة وحدة فيها التفاصيل: التشكيلة، النظام، وطريقة التسوية.
-
-إذا في زميل حابب يحضر، أهلًا وسهلًا فيه.
-
-لقريب إن شاء الله،
-أحمد الحافظ · UBCC / ليجيندا`},
-   proposal:{subj:`الخطوة الجاية بخصوص العرض · ${a.name}`, body:
-`السلام عليكم ${greetAr(a)}،
-
-بتمنى العرض كان واضح. نقطتين بحب أأكد عليهم: ما في تكلفة مقدمة، ونحن منتولى التجهيز والتوصيل والتبديل بالكامل.
-
-وإذا في أي بند بدو تعديل، الدفع والتشكيلة مرنين؛ خبروني شو بيخلي القرار سهل.
-
-منقفلها على قهوة هالأسبوع؟
-
-مع الاحترام،
-أحمد الحافظ · UBCC / ليجيندا`},
-   revive:{subj:`نرجع نكمل حديثنا · ${a.name}`, body:
-`السلام عليكم ${greetAr(a)}،
-
-حكينا قبل فترة عن الكتب في ${a.name} وما كان التوقيت مناسب. اليوم الوضع اختلف: برنامج شراكاتنا كبر بعمّان، والموسم الجاي أقوى فرصة له.
-
-العرض بعده قائم: بدون أي مبلغ مقدم، ونحن منقوم بكل الشغل. شو رأيكم بـ20 دقيقة جديدة؟
-
-مع الاحترام،
-أحمد الحافظ · UBCC / ليجيندا`}};
+   first:{subj:`فكرة ركن كتب في ${a.name}`, body:`السلام عليكم ${greetAr(a)}،\n\nمعك أحمد الحافظ من UBCC / مكتبة ليجيندا، موزع كتب أردني منذ 1995 وعندنا أكثر من 20,000 عنوان عربي وإنجليزي.\n\nركن كتب مختار بعناية بيضيف قيمة حقيقية لمساحتكم وبيخلي الزوار يقعدوا أطول.\n\nعمليًا: ${arModel}، تسوية شهرية، ونحن منجهز ومنوصّل ومنبدّل الكتب.\n\nهل يناسبكم لقاء قصير على قهوة هالأسبوع أو الجاي؟ بجيب معي تشكيلة مقترحة خاصة بـ${a.name}.\n\nمع الاحترام،\nأحمد الحافظ · UBCC / ليجيندا`},
+   follow:{subj:`متابعة: الكتب في ${a.name}`, body:`السلام عليكم ${greetAr(a)}،\n\nبتابع رسالتي السابقة بخصوص ركن الكتب في ${a.name}، وبعرف إنه الجدول بكون مزحوم.\n\nباختصار: ما في أي تكلفة مقدمة، نحن منجهز كل شي وبتدفعوا بس على المبيع.\n\nبيناسبكم 20 دقيقة على قهوة هالأسبوع؟ وإذا في شخص ثاني مسؤول عن هالموضوع، بقدّر التحويلة الصحيحة.\n\nمع الاحترام،\nأحمد الحافظ · UBCC / ليجيندا`},
+   meeting:{subj:`تأكيد موعدنا · UBCC / ليجيندا`, body:`السلام عليكم ${greetAr(a)}،\n\nشكرًا لوقتكم. بأكد موعدنا، ورح أجيب معي تشكيلة كتب مقترحة لـ${a.name} وورقة وحدة فيها التفاصيل: التشكيلة، النظام، وطريقة التسوية.\n\nإذا في زميل حابب يحضر، أهلًا وسهلًا فيه.\n\nلقريب إن شاء الله،\nأحمد الحافظ · UBCC / ليجيندا`},
+   proposal:{subj:`الخطوة الجاية بخصوص العرض · ${a.name}`, body:`السلام عليكم ${greetAr(a)}،\n\nبتمنى العرض كان واضح. نقطتين بحب أأكد عليهم: ما في تكلفة مقدمة، ونحن منتولى التجهيز والتوصيل والتبديل بالكامل.\n\nوإذا في أي بند بدو تعديل، الدفع والتشكيلة مرنين؛ خبروني شو بيخلي القرار سهل.\n\nمنقفلها على قهوة هالأسبوع؟\n\nمع الاحترام،\nأحمد الحافظ · UBCC / ليجيندا`},
+   revive:{subj:`نرجع نكمل حديثنا · ${a.name}`, body:`السلام عليكم ${greetAr(a)}،\n\nحكينا قبل فترة عن الكتب في ${a.name} وما كان التوقيت مناسب. اليوم الوضع اختلف: برنامج شراكاتنا كبر بعمّان، والموسم الجاي أقوى فرصة له.\n\nالعرض بعده قائم: بدون أي مبلغ مقدم، ونحن منقوم بكل الشغل. شو رأيكم بـ20 دقيقة جديدة؟\n\nمع الاحترام،\nأحمد الحافظ · UBCC / ليجيندا`}};
   return {en:EN[goal], ar:AR[goal]}; }
-
 function genEmail(){
   const goal=document.getElementById('g_goal').value, lang=document.getElementById('g_lang').value;
-  const e=buildEmail(CUR,goal,lang); let html='';
+  const e=buildEmail(CUR,goal); let html='';
   if(lang!=='ar') html+=`<div class="gen" id="genEN"><b>Subject:</b> ${esc(e.en.subj)}\n\n${esc(e.en.body)}</div>
     <div class="copyrow"><button class="btn small primary" onclick="copyEl('genEN')">Copy English</button>${CUR.email?`<a class="btn small" href="mailto:${esc(CUR.email)}?subject=${encodeURIComponent(e.en.subj)}&body=${encodeURIComponent(e.en.body)}">Open in email app</a>`:''}</div>`;
   if(lang!=='en') html+=`<div class="gen" dir="rtl" id="genAR"><b>الموضوع:</b> ${esc(e.ar.subj)}\n\n${esc(e.ar.body)}</div>
     <div class="copyrow"><button class="btn small primary" onclick="copyEl('genAR')">Copy Arabic</button></div>`;
-  html+=`<p style="font-size:11px;color:var(--grey);margin-top:6px">Built only from stored account facts, nothing invented. Logging the send: use "Log a touch" below.</p>`;
+  html+=`<p style="font-size:11px;color:var(--grey);margin-top:6px">Built only from stored account facts, nothing invented. After sending, log it below.</p>`;
   document.getElementById('genOut').innerHTML=html; }
 function genWA(){
   const lang=document.getElementById('g_lang').value, v=segVal(CUR.category);
@@ -522,19 +669,13 @@ function genWA(){
   document.getElementById('genOut').innerHTML=html; }
 function copyAIPrompt(){
   const a=CUR;
-  const p=`Write a persuasive but culturally-calibrated Jordanian B2B outreach email (Arabic AND English versions) from Ahmad El-Hafez of UBCC/Legenda Bookstore (distributor since 1995, 20,000+ titles, consignment/Net-60 flexible) to this prospect. Use ONLY these facts, invent nothing:
-Account: ${a.name} | Category: ${a.category} | Area: ${a.area}
-Research hook: ${a.hook||'none'}
-Decision maker: ${a.decision_maker||'unknown'} | Contact: ${a.contact_person||'unknown'}
-Proposed model: ${a.deal_model||'consignment'}
-Status: ${a.status} | Notes: ${a.notes||'none'}
-Rules: warm formal tone, relationship-first, no hard sell, one clear 20-minute coffee ask, mention zero upfront cost if consignment, max 120 words per language, no em-dashes.`;
+  const p=`Write a persuasive but culturally-calibrated Jordanian B2B outreach email (Arabic AND English versions) from Ahmad El-Hafez of UBCC/Legenda Bookstore (distributor since 1995, 20,000+ titles, consignment/Net-60 flexible) to this prospect. Use ONLY these facts, invent nothing:\nAccount: ${a.name} | Category: ${a.category} | Area: ${a.area}\nResearch hook: ${a.hook||'none'}\nDecision maker: ${a.decision_maker||'unknown'} | Contact: ${a.contact_person||'unknown'}\nProposed model: ${a.deal_model||'consignment'}\nStatus: ${a.status} | Notes: ${a.notes||'none'}\nRules: warm formal tone, relationship-first, no hard sell, one clear 20-minute coffee ask, mention zero upfront cost if consignment, max 120 words per language, no em-dashes.`;
   navigator.clipboard.writeText(p).then(()=>toast('AI prompt copied, paste into Claude')); }
-function copyEl(id){const el=document.getElementById(id);navigator.clipboard.writeText(el.innerText.replace(/^Subject: /,'Subject: ')).then(()=>toast('Copied'));}
+function copyEl(id){const el=document.getElementById(id);navigator.clipboard.writeText(el.innerText).then(()=>toast('Copied'));}
 
 /* ---------- CSV export ---------- */
 function exportCSV(){
-  const cols=['name','category','area','status','score','contact_person','phone','email','instagram','decision_maker','deal_model','hook','next_action','next_action_date','est_value_jod','notes'];
+  const cols=['name','category','area','status','score','contact_person','phone','email','instagram','decision_maker','deal_model','hook','next_action','next_action_date','est_value_jod','declined_reason','notes'];
   const rows=[cols.join(',')].concat(ACC.map(a=>cols.map(c=>'"'+String(a[c]??'').replace(/"/g,'""')+'"').join(',')));
   const b=new Blob(["﻿"+rows.join("\n")],{type:'text/csv'});
   const u=URL.createObjectURL(b); const l=document.createElement('a'); l.href=u; l.download='ubcc-b2b-pipeline.csv'; l.click(); }
