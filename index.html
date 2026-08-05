@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#056A78">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icon-192.png">
 <title>UBCC / Legenda · B2B Account Engine</title>
 <link rel="preconnect" href="https://qxjlgfqvqhtrbttcgysw.supabase.co">
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
@@ -308,7 +310,9 @@ const STATUSES = ["To Contact","Contacted","Meeting","Proposal","Pilot","Won","D
 const STAGE_PROB = {"To Contact":.05,"Contacted":.15,"Meeting":.35,"Proposal":.55,"Pilot":.75,"Won":1,"Dead":0,"Declined":0};
 const ROT_DAYS = {"To Contact":14,"Contacted":5,"Meeting":7,"Proposal":10,"Pilot":14};
 const DECLINE_REASONS = ["Not a fit for B2B strategy","Contacted before, bad experience","No realistic budget","Wrong segment for books","Asked not to be contacted","Closed / out of business","Other"];
-let sb=null, ACC=[], TOUCH=[], LISTS=[], SETTINGS={}, charts={}, ROLE='sales', CUR=null, VIEW='board';
+let sb=null, ACC=[], TOUCH=[], LISTS=[], OPENS=[], RQ=[], SETTINGS={}, charts={}, ROLE='sales', CUR=null, VIEW='board';
+const FN_URL = SUPABASE_URL + '/functions/v1/t?t=';
+const RECUR_DAYS = {weekly:7, monthly:30, quarterly:90};
 let ENROLL=null, IDLE_T=null, FAILS=0, DRAG=null, lastSync=0, rtT=null;
 const REMEMBER = localStorage.getItem('b2b_remember')==='1';
 const shareCode = new URLSearchParams(location.search).get('share');
@@ -360,12 +364,15 @@ async function boot(){
   if(ROLE==='curator'){go('titles');}else{go(VIEW);}
 }
 async function loadAll(){
-  const [a,t,s,l]=await Promise.all([
+  const [a,t,s,l,o,r]=await Promise.all([
     sb.from('b2b_accounts').select('*').order('score',{ascending:false,nullsFirst:false}),
     sb.from('b2b_touches').select('*').order('at',{ascending:false}).limit(800),
     sb.from('b2b_settings').select('*'),
-    sb.from('b2b_lists').select('*').order('created_at',{ascending:false})]);
+    sb.from('b2b_lists').select('*').order('created_at',{ascending:false}),
+    sb.from('b2b_opens').select('*').order('created_at',{ascending:false}).limit(300),
+    sb.from('b2b_research_queue').select('*').order('requested_at',{ascending:false}).limit(100)]);
   if(a.data)ACC=a.data; if(t.data)TOUCH=t.data; if(l.data)LISTS=l.data;
+  if(o.data)OPENS=o.data; if(r.data)RQ=r.data;
   if(s.data)SETTINGS=Object.fromEntries(s.data.map(r=>[r.key,r.value]));
   lastSync=Date.now(); fillCatFilter(); saveCache(); }
 function fillCatFilter(){const cats=[...new Set(active().map(x=>x.category).filter(Boolean))].sort();
@@ -375,12 +382,20 @@ function fillCatFilter(){const cats=[...new Set(active().map(x=>x.category).filt
 function subscribeRealtime(){
   try{
     sb.channel('db-live').on('postgres_changes',{event:'*',schema:'public'},p=>{
-      const map={b2b_accounts:'ACC',b2b_touches:'TOUCH',b2b_lists:'LISTS'};
+      const map={b2b_accounts:'ACC',b2b_touches:'TOUCH',b2b_lists:'LISTS',b2b_opens:'OPENS',b2b_research_queue:'RQ'};
       const key=map[p.table]; if(!key&&p.table!=='b2b_reports')return;
       if(key){
-        const arr={ACC,TOUCH,LISTS}[key];
+        const arr={ACC,TOUCH,LISTS,OPENS,RQ}[key];
         if(p.eventType==='DELETE'){const id=p.old&&p.old.id;if(id!=null){const i=arr.findIndex(x=>x.id===id);if(i>-1)arr.splice(i,1);}}
         else{const row=p.new;const i=arr.findIndex(x=>x.id===row.id);if(i>-1)arr[i]=row;else arr.unshift(row);}
+        if(p.table==='b2b_opens'&&p.eventType==='UPDATE'&&p.new&&p.new.open_count>0){
+          const acc=ACC.find(x=>x.id===p.new.account_id);
+          toast('🔥 '+(acc?acc.name:'A prospect')+' opened your email');
+        }
+        if(p.table==='b2b_research_queue'&&p.eventType==='UPDATE'&&p.new&&p.new.status==='done'){
+          const acc=ACC.find(x=>x.id===p.new.account_id);
+          toast('🔎 Radar research done: '+(acc?acc.name:''));
+        }
       }
       clearTimeout(rtT); rtT=setTimeout(()=>{saveCache();goalRing();
         if(!document.getElementById('dossier').classList.contains('hidden'))return;
@@ -550,6 +565,8 @@ function askNext(a){
   m.innerHTML=`<div class="box"><h3>Next step for ${esc(a.name)}?</h3>
    <p style="font-size:12px;color:var(--ink2);margin-bottom:10px">Accounts with a scheduled next step never rot. What and when?</p>
    <div class="field"><label>Next action</label><input id="nxA" placeholder="e.g. WhatsApp follow-up / send proposal / visit" value="${esc(a.next_action||'')}"></div>
+   <div class="field" style="margin-top:8px"><label>Repeat</label><select id="nxR">
+     ${['','weekly','monthly','quarterly'].map(r=>`<option value="${r}" ${a.recur===r?'selected':''}>${r||'no repeat'}</option>`).join('')}</select></div>
    <div class="copyrow">
      <button class="btn" onclick="saveNext(${a.id},'${plus(1)}')">Tomorrow</button>
      <button class="btn" onclick="saveNext(${a.id},'${plus(3)}')">+3 days</button>
@@ -561,11 +578,26 @@ function askNext(a){
 async function saveNext(id,date){
   if(!date)return;
   const a=ACC.find(x=>x.id===id);const na=document.getElementById('nxA')?document.getElementById('nxA').value:a.next_action;
-  const prev={d:a.next_action_date,n:a.next_action};a.next_action_date=date;a.next_action=na;
+  const rc=document.getElementById('nxR')?document.getElementById('nxR').value:(a.recur||'');
+  const prev={d:a.next_action_date,n:a.next_action,r:a.recur};a.next_action_date=date;a.next_action=na;a.recur=rc;
   document.getElementById('modal').classList.add('hidden');rerender();
-  const {error}=await sb.from('b2b_accounts').update({next_action:na,next_action_date:date,updated_by:by()}).eq('id',id);
-  if(error){a.next_action_date=prev.d;a.next_action=prev.n;rerender();toast('Failed: '+error.message);return;}
-  saveCache();toast('Scheduled '+date);}
+  const {error}=await sb.from('b2b_accounts').update({next_action:na,next_action_date:date,recur:rc,updated_by:by()}).eq('id',id);
+  if(error){a.next_action_date=prev.d;a.next_action=prev.n;a.recur=prev.r;rerender();toast('Failed: '+error.message);return;}
+  saveCache();toast('Scheduled '+date+(rc?' · repeats '+rc:''));}
+async function doneAction(id){
+  const a=ACC.find(x=>x.id===id);if(!a||!canEdit())return;
+  sb.from('b2b_touches').insert({account_id:id,kind:'note',detail:'Done: '+(a.next_action||'follow-up'),by_user:by()}).then(()=>{});
+  if(a.recur&&RECUR_DAYS[a.recur]){
+    const d=new Date();d.setDate(d.getDate()+RECUR_DAYS[a.recur]);const nd=d.toISOString().slice(0,10);
+    const prev=a.next_action_date;a.next_action_date=nd;rerender();
+    const {error}=await sb.from('b2b_accounts').update({next_action_date:nd,updated_by:by()}).eq('id',id);
+    if(error){a.next_action_date=prev;rerender();toast('Failed');return;}
+    saveCache();toast('Done · repeats '+a.recur+', next '+nd);goalRing();
+  }else{
+    a.next_action_date=null;rerender();
+    await sb.from('b2b_accounts').update({next_action_date:null,updated_by:by()}).eq('id',id);
+    saveCache();goalRing();askNext(a);
+  }}
 
 /* ============ TODAY ============ */
 async function snooze(id,days){
@@ -585,7 +617,7 @@ function renderToday(){
   const row=(a,tag,cls,why)=>`<div class="rowitem"><span class="pill ${cls}">${tag}</span>
     <div class="grow"><b>${esc(a.name)}</b> <span style="color:var(--ink2);font-size:12px">${esc(a.next_action||a.deal_model||'')}</span>
     ${why&&why.length?`<div style="margin-top:2px"><span class="pill green">season: ${esc(why[0])}</span></div>`:''}</div>
-    ${canEdit()&&a.next_action_date?`<button class="btn small" onclick="snooze(${a.id},1)">+1d</button><button class="btn small" onclick="snooze(${a.id},7)">+1w</button>`:''}
+    ${canEdit()&&a.next_action_date?`<button class="btn small" style="color:var(--ok);border-color:var(--ok)" onclick="doneAction(${a.id})">✓ Done</button><button class="btn small" onclick="snooze(${a.id},1)">+1d</button><button class="btn small" onclick="snooze(${a.id},7)">+1w</button>`:''}
     <button class="btn small primary" onclick="openDossier(${a.id})">Open</button>
     ${canEdit()?`<button class="btn small" onclick="openDossier(${a.id},'outreach')">Compose</button>`:''}</div>`;
   el.innerHTML=`<h2 class="display" style="color:var(--teal);margin-bottom:10px">Today · ${new Date().toDateString()}</h2>
@@ -843,7 +875,17 @@ function openDossier(id,tab){
 
   <div class="sect"><h3>Why this account</h3>
     <div style="font-size:13px;line-height:1.6">${esc(a.hook||'No hook yet')}</div>
-    <div style="font-size:11px;color:var(--ink2);margin-top:4px">Source: ${esc(a.source||'-')} · DM: ${esc(a.decision_maker||'-')} · Model: ${esc(a.deal_model||'-')}</div></div>
+    <div style="font-size:11px;color:var(--ink2);margin-top:4px">Source: ${esc(a.source||'-')} · DM: ${esc(a.decision_maker||'-')} · Model: ${esc(a.deal_model||'-')}</div>
+    <div style="margin-top:6px">${openChip(a.id)}</div></div>
+
+  ${ro?'':`<div class="sect"><h3>AI research · runs on your Claude subscription, no API costs</h3>
+    <div class="copyrow">
+      <button class="btn primary" onclick="openClaudeResearch()">Research with Claude now</button>
+      <button class="btn" onclick="queueResearch()">Queue for Monday radar</button>
+      ${qChip(a.id)}</div>
+    ${qResult(a.id)}
+    <div class="field" style="margin-top:8px"><label>Paste Claude's JSON answer, then apply</label><textarea id="aiPaste" rows="2" placeholder='{"decision_maker":"...","hook":"...","notes":"..."}'></textarea></div>
+    <div class="copyrow"><button class="btn" onclick="applyResearch()">Apply result to this account</button></div></div>`}
 
   <div class="sect"><h3>Title lists for this client (${myLists.length})</h3>
     ${myLists.map(l=>`<div class="rowitem"><div class="grow"><b>${esc(l.name)}</b> <span style="color:var(--ink2);font-size:11px">${l.parsed?.length||0} titles · ${esc(l.uploaded_by)}</span></div>
@@ -859,7 +901,9 @@ function openDossier(id,tab){
     <div class="field"><label>Next action</label><input id="f_next_action" value="${esc(a.next_action)}" ${ro?'disabled':''}></div>
     <div class="field"><label>Next action date</label><input id="f_next_action_date" type="date" value="${a.next_action_date||''}" ${ro?'disabled':''}></div>
     <div class="field"><label>Est. value (JOD/year)</label><input id="f_est_value_jod" type="number" value="${a.est_value_jod||''}" ${ro?'disabled':''}></div>
-    <div class="field"><label>Decision maker</label><input id="f_decision_maker" value="${esc(a.decision_maker)}" ${ro?'disabled':''}></div></div>
+    <div class="field"><label>Decision maker</label><input id="f_decision_maker" value="${esc(a.decision_maker)}" ${ro?'disabled':''}></div>
+    <div class="field"><label>Repeat follow-up</label><select id="f_recur" ${ro?'disabled':''}>
+      ${['','weekly','monthly','quarterly'].map(r=>`<option value="${r}" ${a.recur===r?'selected':''}>${r||'no repeat'}</option>`).join('')}</select></div></div>
     <div class="field" style="margin-top:8px"><label>Notes</label><textarea id="f_notes" rows="2" ${ro?'disabled':''}>${esc(a.notes)}</textarea></div>
     ${ro?'':'<div class="copyrow"><button class="btn primary" onclick="saveFields()">Save</button></div>'}</div>
 
@@ -870,6 +914,7 @@ function openDossier(id,tab){
     <div class="copyrow">
       <button class="btn primary" onclick="genEmail()">Generate email</button>
       <button class="btn" onclick="genWA()">WhatsApp</button>
+      <button class="btn" onclick="createPixel()">Tracked pixel</button>
       <button class="btn" onclick="copyAIPrompt()">Copy AI prompt</button></div>
     <div id="genOut"></div></div>
 
@@ -891,8 +936,8 @@ function closeDossier(){document.getElementById('overlay').classList.add('hidden
 async function statusFromDossier(s){if(!CUR)return;const a=CUR;closeDossier();await changeStatus(a,s);}
 async function saveFields(){
   if(!canEdit()||!CUR)return;
-  const u={};['contact_person','phone','email','instagram','next_action','next_action_date','est_value_jod','decision_maker','notes'].forEach(k=>{const el=document.getElementById('f_'+k);if(el)u[k]=el.value||null;});
-  if(u.est_value_jod==='')u.est_value_jod=null;if(u.next_action_date==='')u.next_action_date=null;
+  const u={};['contact_person','phone','email','instagram','next_action','next_action_date','est_value_jod','decision_maker','notes','recur'].forEach(k=>{const el=document.getElementById('f_'+k);if(el)u[k]=el.value||null;});
+  if(u.est_value_jod==='')u.est_value_jod=null;if(u.next_action_date==='')u.next_action_date=null;if(u.recur===null)u.recur='';
   u.updated_by=by();
   Object.assign(CUR,u);  /* optimistic */
   const {error}=await sb.from('b2b_accounts').update(u).eq('id',CUR.id);
@@ -913,6 +958,72 @@ async function openNew(){
   const name=prompt("Account name?");if(!name)return;
   const {error}=await sb.from('b2b_accounts').insert({name,category:'Other',status:'To Contact',date_added:today(),updated_by:by(),run:-1});
   if(error){toast(error.message);return;}await loadAll();rerender();}
+
+/* ============ OPEN TRACKING + AI RESEARCH ============ */
+function timeAgo(iso){const s=(Date.now()-new Date(iso))/1000;
+  if(s<3600)return Math.max(1,Math.round(s/60))+'m ago';
+  if(s<86400)return Math.round(s/3600)+'h ago';
+  return Math.round(s/86400)+'d ago';}
+function openChip(accId){
+  const rows=OPENS.filter(o=>o.account_id===accId);
+  if(!rows.length)return '';
+  const opened=rows.filter(o=>o.open_count>0).sort((a,b)=>new Date(b.last_open_at)-new Date(a.last_open_at));
+  if(opened.length)return `<span class="pill green">✓ Email opened ${opened.reduce((s,o)=>s+o.open_count,0)}x · last ${timeAgo(opened[0].last_open_at)}</span>`;
+  return `<span class="pill">Pixel sent ${timeAgo(rows[0].created_at)}, not opened yet</span>`;}
+async function createPixel(){
+  if(!CUR||!canEdit())return;
+  const label=(document.getElementById('g_goal')?document.getElementById('g_goal').value:'email');
+  const {data,error}=await sb.from('b2b_opens').insert({account_id:CUR.id,label,created_by:by()}).select();
+  if(error){toast('Error: '+error.message);return;}
+  const url=FN_URL+data[0].token;
+  await navigator.clipboard.writeText(url);
+  document.getElementById('genOut').innerHTML+=`<div class="gen"><b>Tracking pixel created and URL copied.</b>\nIn Gmail: Insert photo (image icon) > Web Address (URL) > paste > Insert, then drag it tiny at the email's end.\nIn Outlook: Insert > Pictures > From web.\n\nYou will get a live alert here the moment ${esc(CUR.name)} opens the email, and the dossier will show "Email opened".\n\n${esc(url)}</div>`;
+  toast('Pixel URL copied');}
+function latestRQ(accId){return RQ.find(r=>r.account_id===accId)||null;}
+function qChip(accId){const r=latestRQ(accId);if(!r)return '';
+  if(r.status==='queued')return '<span class="pill amber">queued for radar</span>';
+  if(r.status==='done')return '<span class="pill green">radar research done</span>';
+  return '';}
+function qResult(accId){const r=latestRQ(accId);
+  if(r&&r.status==='done'&&r.result)return `<div class="gen" style="margin-top:8px"><b>Radar findings (${r.done_at?new Date(r.done_at).toLocaleDateString():''}):</b>\n${esc(r.result).slice(0,900)}</div>`;
+  return '';}
+function buildResearchPrompt(a){
+  return `Research this Jordanian B2B prospect for UBCC/Legenda Bookstore (Amman book distributor, 20,000+ AR/EN titles, consignment and wholesale). Search the web, Jordan sources and Arabic sources too. NO INVENTION: only verified facts with sources, write "unknown" otherwise.
+
+Prospect: ${a.name} | Category: ${a.category||'?'} | Area: ${a.area||'Amman'} | Current hook: ${a.hook||'none'}
+
+Find: decision maker name+role for partnerships/procurement, best contact channel (public email/phone/Instagram), whether our hook is still valid, the strongest angle to sell books there (consignment corner, gifting, library, events), and budget/seasonal timing.
+
+Then reply with ONLY this JSON (no other text):
+{"decision_maker":"","contact_person":"","phone":"","email":"","instagram":"","hook":"","deal_model":"","score":0,"notes":"key facts + source URLs"}`;}
+function openClaudeResearch(){
+  if(!CUR)return;
+  window.open('https://claude.ai/new?q='+encodeURIComponent(buildResearchPrompt(CUR)),'_blank');
+  toast('Claude opened with the research brief. Paste its JSON back here.');}
+async function applyResearch(){
+  if(!CUR||!canEdit())return;
+  let raw=document.getElementById('aiPaste').value.trim();
+  raw=raw.replace(/^```(json)?/i,'').replace(/```$/,'').trim();
+  let j;try{j=JSON.parse(raw);}catch(e){toast('Could not parse: paste the JSON exactly as Claude returned it');return;}
+  const allow=['decision_maker','contact_person','phone','email','instagram','hook','deal_model','notes'];
+  const u={updated_by:by()};let n=0;
+  allow.forEach(k=>{const v=(j[k]??'').toString().trim();
+    if(v&&v.toLowerCase()!=='unknown'){u[k]=(k==='notes'&&CUR.notes)?(CUR.notes+' | AI: '+v).slice(0,1500):v;n++;}});
+  const sc=parseInt(j.score);if(sc>=1&&sc<=10){u.score=sc;n++;}
+  if(!n){toast('Nothing usable in that JSON');return;}
+  Object.assign(CUR,u);
+  const {error}=await sb.from('b2b_accounts').update(u).eq('id',CUR.id);
+  if(error){toast('Error: '+error.message);return;}
+  sb.from('b2b_touches').insert({account_id:CUR.id,kind:'research',detail:'Applied Claude research ('+n+' fields)',by_user:by()}).then(()=>{});
+  saveCache();toast(n+' fields updated');openDossier(CUR.id);}
+async function queueResearch(){
+  if(!CUR)return;
+  const r=latestRQ(CUR.id);
+  if(r&&r.status==='queued'){toast('Already queued');return;}
+  const {error}=await sb.from('b2b_research_queue').insert({account_id:CUR.id,requested_by:by(),question:''});
+  if(error){toast('Error: '+error.message);return;}
+  toast('Queued: the Monday radar will research this account and fill the fields');
+  await loadAll();openDossier(CUR.id);}
 
 /* ============ MEETING MODE ============ */
 function openMeeting(id){
@@ -1049,6 +1160,7 @@ document.addEventListener('DOMContentLoaded',()=>{
     if(e.target.matches('input,textarea,select'))return;
     if(e.key==='/'){e.preventDefault();go('board');document.getElementById('q').focus();}
     if(e.key==='Escape'){closePalette();document.getElementById('modal').classList.add('hidden');}});
+  if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js').catch(()=>{});}
   boot();});
 </script>
 </body>
