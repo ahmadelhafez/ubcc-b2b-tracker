@@ -114,10 +114,18 @@ body.printing #app,body.printing #login,body.printing #toast,body.printing #seas
 
 <div id="login" class="hidden">
   <h1>UBCC / Legenda</h1>
-  <p>B2B Account Engine · Ahmad + Fawaz + Shereen</p>
-  <input id="lemail" type="email" placeholder="Email" value="team@legenda-b2b.app" autocomplete="username">
-  <input id="lpass" type="password" placeholder="Password" autocomplete="current-password">
-  <button onclick="doLogin()">Enter</button>
+  <p>B2B Account Engine · authorized team only</p>
+  <div id="loginStep1">
+    <input id="lemail" type="email" placeholder="Email" autocomplete="username">
+    <input id="lpass" type="password" placeholder="Password" autocomplete="current-password">
+    <label style="font-size:12px;color:var(--grey);display:flex;gap:6px;align-items:center;margin-bottom:10px"><input type="checkbox" id="lremember" style="width:auto;margin:0" onchange="localStorage.setItem('b2b_remember',this.checked?'1':'0');location.reload()"> Remember this device (uncheck on shared computers)</label>
+    <button id="lbtn" onclick="doLogin()">Enter</button>
+  </div>
+  <div id="loginStep2" class="hidden">
+    <p style="margin-bottom:8px;font-size:13px">Enter the 6-digit code from your authenticator app:</p>
+    <input id="lcode" inputmode="numeric" maxlength="6" placeholder="123456">
+    <button onclick="verifyMfaLogin()">Verify</button>
+  </div>
   <div id="loginerr"></div>
 </div>
 
@@ -134,6 +142,7 @@ body.printing #app,body.printing #login,body.printing #toast,body.printing #seas
     <button data-v="declined" onclick="go('declined')">Declined</button>
   </nav>
   <span id="who"></span>
+  <button class="btn small" id="secBtn" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="openSecurity()">2FA</button>
   <button class="btn small" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="sb.auth.signOut().then(()=>location.reload())">Log out</button>
 </header>
 <div id="season"></div>
@@ -176,7 +185,8 @@ body.printing #app,body.printing #login,body.printing #toast,body.printing #seas
 <script>
 const SUPABASE_URL = "https://qxjlgfqvqhtrbttcgysw.supabase.co";
 const SUPABASE_KEY = "sb_publishable_FOeLR9B2zA6pRow0dcDqCw_2bHgiVar";
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const REMEMBER = localStorage.getItem('b2b_remember') === '1';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {auth:{storage: REMEMBER ? window.localStorage : window.sessionStorage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: false}});
 const STATUSES = ["To Contact","Contacted","Meeting","Proposal","Pilot","Won","Dead"];
 const STAGE_PROB = {"To Contact":0.05,"Contacted":0.15,"Meeting":0.35,"Proposal":0.55,"Pilot":0.75,"Won":1,"Dead":0,"Declined":0};
 const DECLINE_REASONS = ["Not a fit for B2B strategy","Contacted before, bad experience","No realistic budget","Wrong segment for books","Asked not to be contacted","Closed / out of business","Other"];
@@ -187,26 +197,56 @@ const declined = () => ACC.filter(a=>a.status==='Declined');
 
 /* ---------- boot / share mode ---------- */
 const shareCode = new URLSearchParams(location.search).get('share');
+function whoFromEmail(email){ return email.startsWith('shereen') ? 'Shereen' : 'Ahmad'; }
+async function mfaGateNeeded(){
+  try{ const {data} = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+    return !!data && data.nextLevel === 'aal2' && data.currentLevel !== 'aal2'; }
+  catch(e){ return false; } }
 async function boot(){
   if(shareCode){ return renderSharedCatalog(shareCode); }
   const {data:{session}} = await sb.auth.getSession();
   if(!session){ document.getElementById('login').classList.remove('hidden'); return; }
+  if(await mfaGateNeeded()){ showMfaStep(); return; }
   const email = session.user.email || '';
   ROLE = email.startsWith('shereen') ? 'curator' : 'sales';
+  localStorage.setItem('b2b_user', whoFromEmail(email));
   document.getElementById('login').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
-  if(ROLE==='curator'){ localStorage.setItem('b2b_user','Shereen'); document.querySelectorAll('.salesonly').forEach(e=>e.classList.add('hidden')); }
-  document.getElementById('who').textContent = (localStorage.getItem('b2b_user')||setUserName())+ (ROLE==='curator'?' · curation':'');
-  await loadAll(); seasonBanner();
+  if(ROLE==='curator'){ document.querySelectorAll('.salesonly').forEach(e=>e.classList.add('hidden')); }
+  document.getElementById('who').textContent = whoFromEmail(email) + (ROLE==='curator'?' · curation':'');
+  await loadAll(); seasonBanner(); startIdleWatch(); renderSecurityBadge();
   if(ROLE==='curator'){ go('titles'); } else { renderBoard(); }
 }
-function setUserName(){
-  let n = prompt("Who is using this device? (Ahmad / Fawaz)","Ahmad") || "Team";
-  localStorage.setItem('b2b_user', n); return n; }
+let FAILS = 0;
 async function doLogin(){
-  const {error} = await sb.auth.signInWithPassword({email:lemail.value.trim(), password:lpass.value});
-  document.getElementById('loginerr').textContent = error ? error.message : "";
-  if(!error){ if(lemail.value.trim().startsWith('shereen')) localStorage.setItem('b2b_user','Shereen'); boot(); } }
+  const btn=document.getElementById('lbtn'); if(btn.disabled) return;
+  const {error} = await sb.auth.signInWithPassword({email:lemail.value.trim().toLowerCase(), password:lpass.value});
+  if(error){
+    FAILS++; const wait=Math.min(60, 5*Math.pow(2, FAILS-1));
+    document.getElementById('loginerr').textContent = `Login failed. Try again in ${wait}s.`;
+    btn.disabled=true; setTimeout(()=>{btn.disabled=false; document.getElementById('loginerr').textContent='';}, wait*1000);
+    return; }
+  FAILS=0; document.getElementById('loginerr').textContent='';
+  if(await mfaGateNeeded()){ showMfaStep(); return; }
+  boot(); }
+function showMfaStep(){
+  document.getElementById('login').classList.remove('hidden');
+  document.getElementById('loginStep1').classList.add('hidden');
+  document.getElementById('loginStep2').classList.remove('hidden');
+  document.getElementById('lcode').focus(); }
+async function verifyMfaLogin(){
+  const code=document.getElementById('lcode').value.trim();
+  const {data:fs} = await sb.auth.mfa.listFactors();
+  const f=(fs && fs.totp && fs.totp[0]) || null;
+  if(!f){ document.getElementById('loginerr').textContent='No 2FA factor found.'; return; }
+  const ch=await sb.auth.mfa.challenge({factorId:f.id});
+  if(ch.error){ document.getElementById('loginerr').textContent=ch.error.message; return; }
+  const vr=await sb.auth.mfa.verify({factorId:f.id, challengeId:ch.data.id, code});
+  if(vr.error){ document.getElementById('loginerr').textContent='Wrong code, try again.'; return; }
+  document.getElementById('loginStep2').classList.add('hidden');
+  document.getElementById('loginStep1').classList.remove('hidden');
+  document.getElementById('loginerr').textContent='';
+  boot(); }
 async function loadAll(){
   const [a,t,s,l] = await Promise.all([
     sb.from('b2b_accounts').select('*').order('score',{ascending:false,nullsFirst:false}),
@@ -307,7 +347,7 @@ function renderTitles(){
       <button class="btn small danger" onclick="delList(${l.id})">Delete</button>
     </div>`;}).join('');
   el.innerHTML=`<h2 class="serif" style="color:var(--deep);margin-bottom:8px">Curated title lists</h2>
-    <p style="color:var(--grey);font-size:12px;margin-bottom:12px">Shereen uploads the client's curated Excel here. Ahmad and Fawaz download it next to the client's name, or open the branded catalog to print/PDF it with covers.</p>
+    <p style="color:var(--grey);font-size:12px;margin-bottom:12px">Shereen uploads the client's curated Excel here. Ahmad downloads it next to the client's name, or opens the branded catalog to print/PDF it with covers.</p>
     <div class="sect"><h3>Upload a new list</h3>
       <div class="grid2">
         <div class="field"><label>Client account</label><select id="upAcc">${accOpts}</select></div>
@@ -527,6 +567,54 @@ async function restoreAcc(id){
   await sb.from('b2b_touches').insert({account_id:id,kind:'restored',detail:'Restored from Declined (was: '+(a.declined_reason||'-')+')',by_user:by()});
   toast('Restored to board'); await loadAll(); renderDeclined(); }
 
+/* ---------- SECURITY: TOTP 2FA + idle logout ---------- */
+let ENROLL=null, IDLE_T=null;
+async function renderSecurityBadge(){
+  try{ const {data:fs}=await sb.auth.mfa.listFactors();
+    const on=!!(fs && fs.totp && fs.totp.length);
+    document.getElementById('secBtn').textContent = on ? '2FA ✓' : 'Enable 2FA'; }catch(e){} }
+async function openSecurity(){
+  const m=document.getElementById('modal');
+  const {data:fs}=await sb.auth.mfa.listFactors();
+  const f=(fs && fs.totp && fs.totp[0]) || null;
+  m.classList.remove('hidden');
+  if(f){
+    m.innerHTML=`<div class="box"><h3 class="serif">Two-factor authentication</h3>
+      <p style="font-size:13px;margin:8px 0;line-height:1.6">2FA is ON. Every login asks for your authenticator code, and the database itself refuses any session that skipped it.</p>
+      <div class="copyrow"><button class="btn danger" onclick="disableMfa('${f.id}')">Turn off 2FA</button>
+      <button class="btn" onclick="document.getElementById('modal').classList.add('hidden')">Close</button></div></div>`;
+    return; }
+  const {data,error}=await sb.auth.mfa.enroll({factorType:'totp', friendlyName:'UBCC B2B'});
+  if(error){ toast(error.message); m.classList.add('hidden'); return; }
+  ENROLL=data;
+  m.innerHTML=`<div class="box"><h3 class="serif">Enable two-factor authentication</h3>
+    <p style="font-size:12px;color:var(--grey);margin:6px 0">Scan with Google Authenticator, Authy or any TOTP app, then enter the 6-digit code it shows.</p>
+    <div style="background:#fff;padding:8px;text-align:center">${ENROLL.totp.qr_code}</div>
+    <p style="font-size:10px;color:var(--grey);word-break:break-all;margin:6px 0">Manual key: ${ENROLL.totp.secret}</p>
+    <input id="mfaCode" inputmode="numeric" maxlength="6" placeholder="123456" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:7px">
+    <div class="copyrow" style="margin-top:10px"><button class="btn primary" onclick="confirmEnroll()">Activate 2FA</button>
+    <button class="btn" onclick="cancelEnroll()">Cancel</button></div></div>`; }
+async function confirmEnroll(){
+  const code=document.getElementById('mfaCode').value.trim();
+  const ch=await sb.auth.mfa.challenge({factorId:ENROLL.id});
+  if(ch.error){ toast(ch.error.message); return; }
+  const vr=await sb.auth.mfa.verify({factorId:ENROLL.id, challengeId:ch.data.id, code});
+  if(vr.error){ toast('Wrong code, try again'); return; }
+  document.getElementById('modal').classList.add('hidden');
+  toast('2FA is ON for this account'); renderSecurityBadge(); }
+async function cancelEnroll(){
+  try{ await sb.auth.mfa.unenroll({factorId:ENROLL.id}); }catch(e){}
+  document.getElementById('modal').classList.add('hidden'); }
+async function disableMfa(id){
+  if(!confirm('Turn off two-factor authentication?')) return;
+  const {error}=await sb.auth.mfa.unenroll({factorId:id});
+  if(error){ toast(error.message); return; }
+  toast('2FA turned off'); document.getElementById('modal').classList.add('hidden'); renderSecurityBadge(); }
+function startIdleWatch(){
+  const reset=()=>{ clearTimeout(IDLE_T); IDLE_T=setTimeout(()=>{ sb.auth.signOut().then(()=>location.reload()); }, 30*60*1000); };
+  ['click','keydown','scroll','touchstart'].forEach(ev=>document.addEventListener(ev,reset,{passive:true}));
+  reset(); }
+
 /* ---------- DOSSIER ---------- */
 let CUR=null;
 function openDossier(id,tab){
@@ -539,7 +627,7 @@ function openDossier(id,tab){
   <button class="btn small" style="float:right" onclick="closeDossier()">Close ✕</button>
   <h2 class="serif">${esc(a.name)}</h2>
   <div style="color:var(--grey);font-size:12px">${esc(a.category||'')} · ${esc(a.area||'')} · Score ${a.score??'?'} ${a.verified===false?'· <b style="color:var(--rust)">UNVERIFIED</b>':''} ${a.status==='Declined'?'· <b style="color:var(--bad)">DECLINED: '+esc(a.declined_reason||'')+'</b>':''}</div>
-  ${ro?'<p style="font-size:11px;color:var(--gold);margin-top:6px">Curation view: you can see everything and manage title lists; pipeline editing stays with Ahmad and Fawaz.</p>':''}
+  ${ro?'<p style="font-size:11px;color:var(--gold);margin-top:6px">Curation view: you can see everything and manage title lists; pipeline editing stays with Ahmad.</p>':''}
   ${!ro&&a.status!=='Declined'?`<div class="statusrow">${STATUSES.map(s=>`<button class="${a.status===s?'on':''}" onclick="setStatus('${s}')">${s}</button>`).join('')}
     <button style="color:var(--bad);border-color:var(--bad)" onclick="openDeclineModal()">Decline...</button></div>`:''}
   ${!ro&&a.status==='Declined'?`<div class="copyrow"><button class="btn primary" onclick="restoreAcc(${a.id});closeDossier()">Restore to board</button></div>`:''}
@@ -681,6 +769,8 @@ function exportCSV(){
   const u=URL.createObjectURL(b); const l=document.createElement('a'); l.href=u; l.download='ubcc-b2b-pipeline.csv'; l.click(); }
 
 document.getElementById('lpass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+document.getElementById('lcode').addEventListener('keydown',e=>{if(e.key==='Enter')verifyMfaLogin();});
+document.getElementById('lremember').checked = REMEMBER;
 boot();
 </script>
 </body>

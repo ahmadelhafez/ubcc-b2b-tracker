@@ -1,9 +1,11 @@
 # UBCC / Legenda B2B Account Engine
 
-Private pipeline tracker for Ahmad + Fawaz. Static frontend (GitHub Pages) + Supabase backend (auth + Postgres with RLS).
+Private pipeline tracker. Static frontend (GitHub Pages) + Supabase backend (auth + Postgres with RLS).
 
-- Live data: Supabase table `b2b_accounts` (66+ accounts), `b2b_touches` (activity log), `b2b_reports` (weekly radar reports), `b2b_settings`.
-- Access: shared team login (Supabase Auth). Nothing renders without login; the anon key alone cannot read data (RLS: authenticated only).
-- Weekly automation (Claude scheduled task "ubcc-b2b-weekly-radar") adds researched prospects, verifies data, posts reports.
+Security model:
+- Personal accounts only (Ahmad = sales admin, Shereen = curation). No shared logins.
+- Optional TOTP two-factor per account, enforced at the DATABASE level: once a user has a verified factor, any session without aal2 is refused by RLS on every table and storage object.
+- Client-side: exponential login backoff, 30-minute idle auto-logout, sessions in sessionStorage unless "Remember this device" is checked.
+- Anon key alone can read nothing (RLS authenticated-only + MFA guard). Public share links expose exactly one curated list via a security-definer RPC keyed by unguessable code.
 
-No build step. Edit `index.html`, push, done.
+Weekly automation (Claude scheduled task) adds researched prospects, verifies data, posts reports. No build step: edit index.html, push, done.
