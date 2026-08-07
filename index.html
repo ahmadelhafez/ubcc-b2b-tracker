@@ -355,6 +355,12 @@ async function boot(){
   if(!session){document.getElementById('login').classList.remove('hidden');return;}
   if(await mfaGateNeeded()){showMfaStep();return;}
   const email=session.user.email||'';
+  if(!['ahmad@legenda-b2b.app','shereen@legenda-b2b.app'].includes(email)){
+    await sb.auth.signOut();
+    document.getElementById('login').classList.remove('hidden');
+    document.getElementById('app').classList.add('hidden');
+    document.getElementById('loginerr').textContent='"'+email+'" has no access to the B2B app. Use your ahmad@legenda-b2b.app account.';
+    return;}
   ROLE=email.startsWith('shereen')?'curator':'sales';
   localStorage.setItem('b2b_user',whoFromEmail(email));
   document.getElementById('login').classList.add('hidden');
