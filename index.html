@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#056A78">
+<meta name="theme-color" content="#F16725">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="apple-touch-icon" href="./icon-192.png">
 <title>UBCC / Legenda · B2B Account Engine</title>
@@ -16,23 +16,27 @@
 <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
 <style>
 :root{
-  --bg:#F7F4EF; --surface:#FCFBF7; --surface2:#F2EEE6; --ink:#2B2925; --ink2:#7A756A;
-  --line:#E6E1D5; --line2:#D8D2C4;
-  --teal:#056A78; --teal2:#008EA6; --gold:#A8894C; --rust:#B05C3B;
+  /* UBCC orange system: #F6891F bright / #F16725 deep, extracted from the UBCC logo.
+     Note: --teal/--teal2/--tealbg are legacy names now carrying the UBCC brand colors. */
+  --bg:#FAF8F5; --surface:#FFFFFF; --surface2:#F4F1EB; --ink:#211E1A; --ink2:#877F73;
+  --line:#ECE7DE; --line2:#DDD6C9;
+  --brand:#F6891F; --brand2:#F16725;
+  --teal:#C05207; --teal2:#F6891F; --gold:#A8894C; --rust:#B05C3B;
   --ok:#2F7D4F; --warn:#B07C1F; --bad:#B3403A;
-  --okbg:#EAF3ED; --warnbg:#F8F0DD; --badbg:#F7E8E6; --tealbg:#E8F2F4;
+  --okbg:#EAF3ED; --warnbg:#F8F0DD; --badbg:#F7E8E6; --tealbg:#FBEEDF;
   --r-s:6px; --r-m:12px; --dur:.18s; --ease:cubic-bezier(.4,0,.2,1);
-  --shadow:0 8px 30px rgba(43,41,37,.12);
+  --shadow:0 8px 30px rgba(45,35,20,.13);
   --font-ui:'IBM Plex Sans','IBM Plex Sans Arabic',system-ui,sans-serif;
   --font-d:'Fraunces',Georgia,serif;
 }
 [data-theme="dark"]{
-  --bg:#16130E; --surface:#1E1A14; --surface2:#26211A; --ink:#E7E2D8; --ink2:#9A9488;
-  --line:#302A21; --line2:#3C352A;
-  --teal:#4FB3C4; --teal2:#67C2D1; --gold:#C4A76A; --rust:#D08663;
+  --bg:#141210; --surface:#1C1916; --surface2:#26221D; --ink:#EAE5DC; --ink2:#9C948A;
+  --line:#2F2A23; --line2:#3D362D;
+  --brand:#F6891F; --brand2:#F16725;
+  --teal:#FFA95E; --teal2:#F6891F; --gold:#C4A76A; --rust:#D08663;
   --ok:#6FBF8F; --warn:#D3A64E; --bad:#E07A73;
-  --okbg:#1E2B22; --warnbg:#2E2717; --badbg:#301E1C; --tealbg:#15262B;
-  --shadow:0 8px 30px rgba(0,0,0,.5);
+  --okbg:#1E2B22; --warnbg:#2E2717; --badbg:#301E1C; --tealbg:#2C2013;
+  --shadow:0 8px 30px rgba(0,0,0,.55);
 }
 @media (prefers-reduced-motion: reduce){ :root{--dur:0s} }
 *{box-sizing:border-box;margin:0;padding:0}
@@ -51,13 +55,13 @@ input,select,textarea{font-family:inherit;color:var(--ink);background:var(--surf
 #login h1{color:var(--teal);font-size:24px;margin-bottom:4px}
 #login p{color:var(--ink2);font-size:12px;margin-bottom:18px}
 #login input{width:100%;padding:11px 12px;margin-bottom:10px;border:1px solid var(--line2);border-radius:var(--r-s);font-size:14px}
-#login button{width:100%;padding:12px;background:var(--teal);color:#fff;border:none;border-radius:var(--r-s);font-size:14px;font-weight:600;transition:transform var(--dur) var(--ease),opacity var(--dur)}
+#login button{width:100%;padding:12px;background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;border:none;border-radius:var(--r-s);font-size:14px;font-weight:600;box-shadow:0 2px 10px rgba(241,103,37,.3);transition:transform var(--dur) var(--ease),opacity var(--dur)}
 #login button:active{transform:scale(.97)}
 #login button:disabled{opacity:.5;cursor:default}
 #loginerr{color:var(--bad);font-size:12px;margin-top:8px;min-height:16px}
 
 /* shell */
-header{background:var(--surface);border-bottom:1px solid var(--line);padding:10px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;position:sticky;top:0;z-index:50}
+header{background:color-mix(in srgb,var(--surface) 82%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--line);padding:10px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;position:sticky;top:0;z-index:50}
 header .brand{font-family:var(--font-d);font-weight:700;font-size:17px;color:var(--teal)}
 nav{display:flex;gap:2px;flex-wrap:wrap}
 nav button{background:transparent;border:none;color:var(--ink2);padding:7px 13px;border-radius:20px;font-size:13px;font-weight:500;transition:background var(--dur) var(--ease),color var(--dur)}
@@ -70,7 +74,7 @@ nav button.on{background:var(--tealbg);color:var(--teal);font-weight:600}
 #goal{display:flex;align-items:center;gap:6px;cursor:pointer}
 #goal svg{transform:rotate(-90deg)}
 #goal .lbl{font-size:11px;color:var(--ink2)}
-#season{background:linear-gradient(90deg,var(--tealbg),var(--warnbg));color:var(--ink);padding:7px 20px;font-size:12px;text-align:center;border-bottom:1px solid var(--line)}
+#season{background:linear-gradient(90deg,var(--tealbg),color-mix(in srgb,var(--brand) 14%,var(--surface)));color:var(--ink);padding:7px 20px;font-size:12px;text-align:center;border-bottom:1px solid var(--line)}
 main{padding:18px 20px calc(20px + env(safe-area-inset-bottom));max-width:1500px;margin:0 auto}
 
 /* controls + buttons */
@@ -80,8 +84,8 @@ main{padding:18px 20px calc(20px + env(safe-area-inset-bottom));max-width:1500px
 .btn{padding:8px 14px;border-radius:var(--r-s);border:1px solid var(--line2);background:var(--surface);font-size:13px;font-weight:500;transition:background var(--dur) var(--ease),transform var(--dur),border-color var(--dur)}
 .btn:hover{background:var(--surface2)}
 .btn:active{transform:scale(.97)}
-.btn.primary{background:var(--teal);color:#fff;border-color:var(--teal)}
-.btn.primary:hover{filter:brightness(1.08)}
+.btn.primary{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;border:none;font-weight:600;box-shadow:0 2px 8px rgba(241,103,37,.28)}
+.btn.primary:hover{filter:brightness(1.06);box-shadow:0 3px 12px rgba(241,103,37,.38)}
 .btn.danger{color:var(--bad);border-color:var(--bad);background:transparent}
 .btn.small{padding:4px 10px;font-size:12px}
 
@@ -172,7 +176,8 @@ textarea{resize:vertical}
 
 /* catalog */
 #catalog{position:fixed;inset:0;background:var(--surface);z-index:200;overflow-y:auto}
-.cat-head{background:var(--teal);color:#fff;padding:28px 34px}
+/* Client-facing catalog stays LEGENDA teal deliberately */
+.cat-head{background:#056A78;color:#fff;padding:28px 34px}
 [data-theme="dark"] .cat-head{background:#0B3B44}
 .cat-head .brand2{font-size:11px;letter-spacing:2.5px;text-transform:uppercase;opacity:.85}
 .cat-head h1{font-size:30px;margin-top:6px}
@@ -188,7 +193,7 @@ textarea{resize:vertical}
 .book .ti{font-family:var(--font-d);font-size:14px;font-weight:600;line-height:1.3}
 .book .au{font-size:11px;color:var(--ink2);margin-top:3px}
 .book .meta{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
-.book .pr{background:var(--teal);color:#fff;font-size:11px;font-weight:700;border-radius:7px;padding:2px 8px}
+.book .pr{background:#056A78;color:#fff;font-size:11px;font-weight:700;border-radius:7px;padding:2px 8px}
 .book .is{font-size:9px;color:var(--ink2)}
 .cat-foot{padding:18px 34px;color:var(--ink2);font-size:11px;border-top:1px solid var(--line)}
 body.printing #app,body.printing #login,body.printing #toast,body.printing #season,body.printing #bottomnav{display:none!important}
@@ -782,10 +787,10 @@ function renderAnalytics(){
   const ink2=getComputedStyle(document.documentElement).getPropertyValue('--ink2');
   Chart.defaults.color=ink2;Chart.defaults.font.family="'IBM Plex Sans',sans-serif";
   const mk=(id,cfg)=>{charts[id]&&charts[id].destroy();charts[id]=new Chart(document.getElementById(id),cfg);};
-  mk('cFunnel',{type:'bar',data:{labels:STATUSES,datasets:[{data:STATUSES.map(s=>cnt[s]),backgroundColor:['#8a8578','#A8894C','#056A78','#008EA6','#B05C3B','#2F7D4F','#B3403A'],borderRadius:5}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}}});
+  mk('cFunnel',{type:'bar',data:{labels:STATUSES,datasets:[{data:STATUSES.map(s=>cnt[s]),backgroundColor:['#9C948A','#C4841B','#F6891F','#F16725','#B05C3B','#2F7D4F','#B3403A'],borderRadius:5}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}}});
   mk('cWin',{type:'bar',data:{labels:Object.keys(closedCats),datasets:[{label:'Won',data:Object.values(closedCats).map(x=>x.w),backgroundColor:'#2F7D4F',borderRadius:5},{label:'Dead',data:Object.values(closedCats).map(x=>x.d),backgroundColor:'#B3403A',borderRadius:5}]},options:{scales:{x:{stacked:true},y:{stacked:true,ticks:{precision:0}}}}});
-  mk('cAct',{type:'line',data:{labels:weeks.map(w=>(w.getMonth()+1)+'/'+w.getDate()),datasets:[{label:'Touches',data:wk,borderColor:'#008EA6',backgroundColor:'#008EA620',fill:true,tension:.35},{label:'Target 10/wk',data:wk.map(()=>10),borderColor:'#B05C3B',borderDash:[6,4],pointRadius:0}]},options:{scales:{y:{beginAtZero:true,ticks:{precision:0}}}}});
-  mk('cCat',{type:'doughnut',data:{labels:topCats.map(x=>x[0]),datasets:[{data:topCats.map(x=>x[1]),backgroundColor:['#008EA6','#056A78','#A8894C','#B05C3B','#8a8578','#6aa8b5','#c9b88a','#d99b7c']}]},options:{plugins:{legend:{position:'right'}},cutout:'58%'}});
+  mk('cAct',{type:'line',data:{labels:weeks.map(w=>(w.getMonth()+1)+'/'+w.getDate()),datasets:[{label:'Touches',data:wk,borderColor:'#F6891F',backgroundColor:'#F6891F22',fill:true,tension:.35},{label:'Target 10/wk',data:wk.map(()=>10),borderColor:'#056A78',borderDash:[6,4],pointRadius:0}]},options:{scales:{y:{beginAtZero:true,ticks:{precision:0}}}}});
+  mk('cCat',{type:'doughnut',data:{labels:topCats.map(x=>x[0]),datasets:[{data:topCats.map(x=>x[1]),backgroundColor:['#F6891F','#F16725','#056A78','#A8894C','#B05C3B','#9C948A','#FFB067','#c9b88a']}]},options:{plugins:{legend:{position:'right'}},cutout:'58%'}});
   const T=SETTINGS.kpi_targets||{};
   document.getElementById('kpiTargets').innerHTML='<table style="width:100%;font-size:12px;border-collapse:collapse">'+Object.entries(T).map(([k,v])=>{
     let cur='';
