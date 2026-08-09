@@ -256,6 +256,7 @@ body.printing #app,body.printing #login,body.printing #toast,body.printing #seas
     <button data-v="declined" onclick="go('declined')">Declined</button>
   </nav>
   <div id="hright">
+    <span id="netBadge" class="pill hidden" style="font-weight:600"></span>
     <div id="goal" title="Touches this week vs target 10" onclick="go('today')"></div>
     <button class="hbtn" onclick="openPalette()" title="Ctrl+K">⌘K</button>
     <button class="hbtn" id="themeBtn" onclick="toggleTheme()">◐</button>
@@ -388,6 +389,9 @@ async function boot(){
   else if(ROLE==='sales'){document.getElementById('board').innerHTML='<div class="col"><div class="skel"></div><div class="skel"></div></div><div class="col"><div class="skel"></div></div><div class="col"><div class="skel"></div><div class="skel"></div></div>';}
   await loadAll();
   seasonBanner();goalRing();startIdleWatch();renderSecurityBadge();subscribeRealtime();watchVisibility();
+  updateNetBadge();flushOutbox();
+  window.addEventListener('online',()=>{updateNetBadge();flushOutbox();});
+  window.addEventListener('offline',updateNetBadge);
   go(cached?VIEW:home);
 }
 async function loadAll(){
@@ -1007,15 +1011,32 @@ async function saveFields(){
   const u={};['contact_person','phone','email','instagram','next_action','next_action_date','est_value_jod','decision_maker','notes','recur','area'].forEach(k=>{const el=document.getElementById('f_'+k);if(el)u[k]=el.value||null;});
   if(u.est_value_jod==='')u.est_value_jod=null;if(u.next_action_date==='')u.next_action_date=null;if(u.recur===null)u.recur='';
   u.updated_by=by();
+  const id=CUR.id;
   Object.assign(CUR,u);  /* optimistic */
-  const {error}=await sb.from('b2b_accounts').update(u).eq('id',CUR.id);
+  if(!navigator.onLine){queueWrite({table:'b2b_accounts',type:'update',payload:u,id});saveCache();rerender();toast('Saved offline, will sync');return;}
+  const {error}=await sb.from('b2b_accounts').update(u).eq('id',id);
+  if(error&&/fetch|network|Failed to fetch/i.test(error.message||'')){
+    queueWrite({table:'b2b_accounts',type:'update',payload:u,id});saveCache();rerender();toast('Saved offline, will sync');return;}
   toast(error?('Error: '+error.message):'Saved');if(!error)saveCache();rerender();}
 async function logTouch(kind){
   if(!canEdit()||!CUR)return;
   const el=document.getElementById('touchDetail');
   const detail=el?el.value:'';
   const a=CUR;
-  const {data,error}=await sb.from('b2b_touches').insert({account_id:a.id,kind,detail,by_user:by()}).select();
+  const row={account_id:a.id,kind,detail,by_user:by()};
+  if(!navigator.onLine){
+    queueWrite({table:'b2b_touches',type:'insert',payload:row});
+    TOUCH.unshift(Object.assign({id:'local-'+Date.now(),at:new Date().toISOString()},row));
+    const l0=document.getElementById('touchList');
+    if(l0){const d0=document.createElement('div');d0.className='touch';
+      d0.innerHTML=`<b>${esc(kind)}</b> ${esc(detail)}<div class="d">${esc(new Date().toLocaleString())} · ${esc(by())} · offline</div>`;l0.prepend(d0);}
+    if(el)el.value='';saveCache();goalRing();toast('Logged offline, will sync');
+    if(['call','whatsapp','email','meeting','visit'].includes(kind))askNext(a);
+    return;}
+  const {data,error}=await sb.from('b2b_touches').insert(row).select();
+  if(error&&/fetch|network|Failed to fetch/i.test(error.message||'')){
+    queueWrite({table:'b2b_touches',type:'insert',payload:row});
+    if(el)el.value='';toast('Logged offline, will sync');return;}
   if(error){toast('Error: '+error.message);return;}
   if(data&&data[0]&&!TOUCH.some(t=>t.id===data[0].id))TOUCH.unshift(data[0]);
   if(['call','whatsapp','email'].includes(kind)&&!a.outreach_date){
@@ -1100,6 +1121,150 @@ async function queueResearch(){
   if(error){toast('Error: '+error.message);return;}
   toast('Queued: the Monday radar will research this account and fill the fields');
   await loadAll();openDossier(CUR.id);}
+
+/* ============ v9: OFFLINE OUTBOX ============ */
+/* Queue writes when the network drops (shops, basements) and flush on reconnect.
+   localStorage, not IndexedDB + Background Sync: Safari/iOS has never supported
+   Background Sync, so an in-page flush is the only thing that actually works there. */
+const OUTBOX_KEY='b2b_outbox_v1';
+function outbox(){try{return JSON.parse(localStorage.getItem(OUTBOX_KEY)||'[]');}catch(e){return [];}}
+function outboxSave(q){try{localStorage.setItem(OUTBOX_KEY,JSON.stringify(q.slice(-200)));}catch(e){}}
+function queueWrite(op){const q=outbox();q.push(Object.assign({qid:(crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random())),at:Date.now()},op));outboxSave(q);updateNetBadge();}
+async function online(){
+  if(!navigator.onLine)return false;
+  try{const r=await fetch(SUPABASE_URL+'/auth/v1/health',{cache:'no-store'});return r.ok||r.status<500;}catch(e){return false;}}
+async function flushOutbox(){
+  const q=outbox();if(!q.length)return {sent:0,left:0};
+  if(!await online())return {sent:0,left:q.length};
+  let sent=0;const left=[];
+  for(const op of q){
+    try{
+      let res;
+      if(op.type==='update')res=await sb.from(op.table).update(op.payload).eq('id',op.id);
+      else if(op.type==='insert')res=await sb.from(op.table).insert(op.payload);
+      else continue;
+      if(res.error){left.push(op);}else sent++;
+    }catch(e){left.push(op);}}
+  outboxSave(left);updateNetBadge();
+  if(sent)toast('Synced '+sent+' offline change'+(sent>1?'s':''));
+  if(sent)await loadAll(),rerender();
+  return {sent,left:left.length};}
+function updateNetBadge(){
+  const n=outbox().length,el=document.getElementById('netBadge');if(!el)return;
+  const off=!navigator.onLine;
+  el.classList.toggle('hidden',!n&&!off);
+  el.textContent=off?(n?('Offline · '+n+' queued'):'Offline'):(n?(n+' queued'):'');
+  el.style.background=off?'var(--badbg)':'var(--warnbg)';
+  el.style.color=off?'var(--bad)':'var(--warn)';}
+/* wrap a write so it survives a dead network */
+async function safeWrite(table,type,payload,id,localApply,rollback){
+  if(localApply)localApply();
+  if(!navigator.onLine){queueWrite({table,type,payload,id});toast('Saved offline, will sync');return true;}
+  const res=type==='update'?await sb.from(table).update(payload).eq('id',id):await sb.from(table).insert(payload);
+  if(res.error){
+    if(/fetch|network|Failed/i.test(res.error.message||'')){queueWrite({table,type,payload,id});toast('Saved offline, will sync');return true;}
+    if(rollback)rollback();toast('Failed: '+res.error.message);return false;}
+  return true;}
+
+/* ============ v9: FREE ROUTE OPTIMIZER ============ */
+/* Geocode once via Nominatim (1 req/sec, results cached in the DB as the policy requires),
+   then order the stops in the browser: nearest neighbour + 2-opt. No API key, no cost. */
+function haversine(a,b){const R=6371,d=x=>x*Math.PI/180;
+  const dLat=d(b.lat-a.lat),dLng=d(b.lng-a.lng);
+  const s=Math.sin(dLat/2)**2+Math.cos(d(a.lat))*Math.cos(d(b.lat))*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(s));}
+function orderStops(pts){
+  if(pts.length<3)return pts.slice();
+  const left=pts.slice(1),tour=[pts[0]];
+  while(left.length){let bi=0,bd=Infinity;
+    left.forEach((p,i)=>{const d=haversine(tour[tour.length-1],p);if(d<bd){bd=d;bi=i;}});
+    tour.push(left.splice(bi,1)[0]);}
+  const len=t=>t.reduce((s,p,i)=>i?s+haversine(t[i-1],p):0,0);
+  let improved=true,best=tour.slice(),bl=len(best),guard=0;
+  while(improved&&guard++<60){improved=false;
+    for(let i=1;i<best.length-1;i++)for(let j=i+1;j<best.length;j++){
+      const cand=best.slice(0,i).concat(best.slice(i,j+1).reverse(),best.slice(j+1));
+      const cl=len(cand);if(cl<bl-1e-9){best=cand;bl=cl;improved=true;}}}
+  return best;}
+async function geocodeMissing(ids){
+  const need=ids.map(i=>ACC.find(a=>a.id===i)).filter(a=>a&&(a.lat==null||a.lng==null));
+  if(!need.length)return {done:0,failed:0};
+  let done=0,failed=0;
+  const out=document.getElementById('rtOut');
+  for(const a of need){
+    if(out)out.innerHTML=`<div class="gen">Finding ${esc(a.name)} on the map... (${done+failed+1} of ${need.length})</div>`;
+    const q=encodeURIComponent(a.name+', '+(a.area||'')+', Jordan');
+    try{
+      const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&countrycodes=jo&limit=1&q=${q}`,{headers:{'Accept':'application/json'}});
+      const j=await r.json();
+      if(j&&j[0]){a.lat=+j[0].lat;a.lng=+j[0].lon;a.geo_at=new Date().toISOString();
+        await sb.from('b2b_accounts').update({lat:a.lat,lng:a.lng,geo_at:a.geo_at}).eq('id',a.id);done++;}
+      else failed++;
+    }catch(e){failed++;}
+    await new Promise(s=>setTimeout(s,1100)); /* Nominatim: max 1 request per second */
+  }
+  saveCache();return {done,failed};}
+async function optimizeRoute(){
+  const ids=[...document.querySelectorAll('.rtChk:checked')].map(c=>+c.value);
+  if(ids.length<3){toast('Pick at least 3 stops to optimise');return;}
+  const g=await geocodeMissing(ids);
+  const pts=ids.map(i=>ACC.find(a=>a.id===i)).filter(a=>a&&a.lat!=null);
+  if(pts.length<3){document.getElementById('rtOut').innerHTML=`<div class="gen">Could not place enough of these on the map (${g.failed} not found). Amman addresses are often landmark-based; open each account and set its area, or use the plain route below.</div>`;return;}
+  const ordered=orderStops(pts);
+  const km=ordered.reduce((s,p,i)=>i?s+haversine(ordered[i-1],p):0,0);
+  const naive=pts.reduce((s,p,i)=>i?s+haversine(pts[i-1],p):0,0);
+  const legs=[];
+  for(let i=0;i<ordered.length-1;i+=4){
+    const chunk=ordered.slice(i,i+5);
+    const enc=p=>encodeURIComponent(p.lat+','+p.lng);
+    const way=chunk.slice(1,-1).map(enc).join('%7C');
+    legs.push(`https://www.google.com/maps/dir/?api=1&origin=${enc(chunk[0])}&destination=${enc(chunk[chunk.length-1])}${way?'&waypoints='+way:''}&travelmode=driving`);}
+  document.getElementById('rtOut').innerHTML=
+   `<div class="gen"><b>Optimised order</b> (${ordered.length} stops, about ${km.toFixed(1)} km straight-line${naive>km?', saves '+(naive-km).toFixed(1)+' km vs the order you picked':''}):\n`
+   +ordered.map((p,i)=>`${i+1}. ${esc(p.name)}${p.area?' · '+esc(p.area):''}`).join('\n')+'</div>'
+   +`<div class="copyrow">${legs.map((l,i)=>`<a class="btn primary" target="_blank" rel="noopener" href="${esc(l)}">Open leg ${i+1}${legs.length>1?' of '+legs.length:''}</a>`).join('')}
+     <button class="btn" onclick="planRouteDay()">Schedule as today's visits</button></div>
+   ${g.failed?`<p style="font-size:11px;color:var(--ink2)">${g.failed} account(s) could not be located automatically and were left out.</p>`:''}`;}
+
+/* ============ v9: OSM PROSPECT FINDER (free, no key) ============ */
+const OSM_PRESETS={
+  'Cafes':'node["amenity"="cafe"]','Hotels':'node["tourism"="hotel"]','Bookshops':'node["shop"="books"]',
+  'Kids/toys':'node["shop"="toys"]','Pharmacies':'node["amenity"="pharmacy"]','Libraries':'node["amenity"="library"]',
+  'Art/culture':'node["amenity"="arts_centre"]','Coworking':'node["amenity"="coworking_space"]',
+  'Gift shops':'node["shop"="gift"]','Malls':'node["shop"="mall"]'};
+async function findOSM(){
+  const type=document.getElementById('osmType').value;
+  const out=document.getElementById('osmOut');
+  out.innerHTML='<div class="gen">Searching OpenStreetMap for Amman...</div>';
+  const q=`[out:json][timeout:25];area["name:en"="Amman Governorate"]->.a;(${OSM_PRESETS[type]}(area.a););out body 400;`;
+  try{
+    const r=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:'data='+encodeURIComponent(q),headers:{'Content-Type':'application/x-www-form-urlencoded'}});
+    const j=await r.json();
+    const known=new Set(ACC.map(a=>normName(a.name)));
+    const rows=(j.elements||[]).map(e=>({name:(e.tags&&(e.tags['name:en']||e.tags.name))||'',
+        phone:(e.tags&&(e.tags.phone||e.tags['contact:phone']))||'',
+        web:(e.tags&&(e.tags.website||e.tags['contact:website']))||'',
+        ig:(e.tags&&e.tags['contact:instagram'])||'',
+        area:(e.tags&&(e.tags['addr:suburb']||e.tags['addr:city']))||'',lat:e.lat,lng:e.lon}))
+      .filter(x=>x.name&&!known.has(normName(x.name)))
+      .sort((a,b)=>((b.phone?2:0)+(b.web?1:0))-((a.phone?2:0)+(a.web?1:0)));
+    OSMFOUND=rows;
+    out.innerHTML=`<p style="font-size:12px;color:var(--ink2);margin-bottom:6px">${rows.length} places in Amman not already in your pipeline. Those with a phone or website first. Data © OpenStreetMap contributors (ODbL), for internal use.</p>`
+     +rows.slice(0,40).map((x,i)=>`<div class="rowitem"><div class="grow"><b>${esc(x.name)}</b>
+        <span style="font-size:11px;color:var(--ink2)">${esc([x.area,x.phone,x.web].filter(Boolean).join(' · '))||'no contact details in OSM'}</span></div>
+        ${canEdit()?`<button class="btn small primary" onclick="addOSM(${i})">Add to pipeline</button>`:''}</div>`).join('');
+  }catch(e){out.innerHTML='<div class="gen">OpenStreetMap did not respond. Try again in a minute.</div>';}}
+let OSMFOUND=[];
+async function addOSM(i){
+  if(!canEdit())return;const x=OSMFOUND[i];if(!x)return;
+  const type=document.getElementById('osmType').value;
+  const {error}=await sb.from('b2b_accounts').insert({name:x.name,category:type,area:x.area||'Other',
+    phone:x.phone||'',instagram:x.ig||'',source:x.web||'OpenStreetMap',
+    hook:'Found via OpenStreetMap ('+type+' in Amman). Verify before outreach.',
+    status:'To Contact',verified:false,date_added:today(),updated_by:by(),run:-1,
+    lat:x.lat,lng:x.lng,geo_at:new Date().toISOString()});
+  if(error){toast(error.message);return;}
+  toast('Added '+x.name);await loadAll();findOSM();}
 
 /* ============ NEW v8 FUNCTIONS ============ */
 
@@ -1369,14 +1534,20 @@ function renderRoutePanel(){
   return `<div class="sect"><h3>Visit route planner (Amman)</h3>
    <p style="font-size:12px;color:var(--ink2);margin-bottom:8px">Pick an area, tick the stops, and get a Google Maps route. Mobile Maps links take 3 stops at a time, so long routes are split into legs automatically.</p>
    <div class="field"><label>Area</label><select id="rtArea" onchange="renderRouteStops()">${sorted.map(([k,v])=>`<option value="${esc(k)}">${esc(k)} (${v.length})</option>`).join('')}</select></div>
-   <div id="rtStops" style="margin-top:10px"></div></div>`;}
+   <div id="rtStops" style="margin-top:10px"></div></div>
+   <div class="sect"><h3>Find new prospects on OpenStreetMap (free)</h3>
+    <p style="font-size:12px;color:var(--ink2);margin-bottom:8px">Searches public map data for Amman and hides anything already in your pipeline. No account, no cost. Verify details before outreach.</p>
+    <div class="grid2"><div class="field"><label>Type</label><select id="osmType">${Object.keys(OSM_PRESETS).map(k=>`<option>${esc(k)}</option>`).join('')}</select></div>
+     <div class="field" style="align-self:end"><button class="btn primary" onclick="findOSM()">Search Amman</button></div></div>
+    <div id="osmOut" style="margin-top:10px"></div></div>`;}
 function renderRouteStops(){
   const area=document.getElementById('rtArea').value;
   const list=active().filter(a=>(a.area||'Other')===area&&!['Won','Dead'].includes(a.status));
   document.getElementById('rtStops').innerHTML=
    list.map(a=>`<label class="rowitem" style="cursor:pointer"><input type="checkbox" class="rtChk" value="${a.id}" style="width:auto">
      <div class="grow"><b>${esc(a.name)}</b> <span class="pill">${esc(a.status)}</span></div></label>`).join('')
-   +`<div class="copyrow"><button class="btn primary" onclick="buildRoute()">Build route</button>
+   +`<div class="copyrow"><button class="btn primary" onclick="optimizeRoute()">Optimise route</button>
+     <button class="btn" onclick="buildRoute()">Keep my order</button>
      <button class="btn" onclick="document.querySelectorAll('.rtChk').forEach(c=>c.checked=true)">Select all</button></div>
      <div id="rtOut"></div>`;}
 function buildRoute(){
