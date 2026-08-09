@@ -1227,25 +1227,29 @@ async function optimizeRoute(){
    ${g.failed?`<p style="font-size:11px;color:var(--ink2)">${g.failed} account(s) could not be located automatically and were left out.</p>`:''}`;}
 
 /* ============ v9: OSM PROSPECT FINDER (free, no key) ============ */
+const OSM_AREA=3602926344; /* Amman governorate: OSM relation 2926344 + 3600000000 */
 const OSM_PRESETS={
-  'Cafes':'node["amenity"="cafe"]','Hotels':'node["tourism"="hotel"]','Bookshops':'node["shop"="books"]',
-  'Kids/toys':'node["shop"="toys"]','Pharmacies':'node["amenity"="pharmacy"]','Libraries':'node["amenity"="library"]',
-  'Art/culture':'node["amenity"="arts_centre"]','Coworking':'node["amenity"="coworking_space"]',
-  'Gift shops':'node["shop"="gift"]','Malls':'node["shop"="mall"]'};
+  'Cafes':'"amenity"="cafe"','Hotels':'"tourism"="hotel"','Bookshops':'"shop"="books"',
+  'Kids/toys':'"shop"="toys"','Pharmacies':'"amenity"="pharmacy"','Libraries':'"amenity"="library"',
+  'Art/culture':'"amenity"="arts_centre"','Coworking':'"amenity"="coworking_space"',
+  'Gift shops':'"shop"="gift"','Malls':'"shop"="mall"','Restaurants':'"amenity"="restaurant"',
+  'Clinics':'"amenity"="clinic"','Museums':'"tourism"="museum"','Stationery':'"shop"="stationery"'};
 async function findOSM(){
   const type=document.getElementById('osmType').value;
   const out=document.getElementById('osmOut');
+  const tag=OSM_PRESETS[type];
   out.innerHTML='<div class="gen">Searching OpenStreetMap for Amman...</div>';
-  const q=`[out:json][timeout:25];area["name:en"="Amman Governorate"]->.a;(${OSM_PRESETS[type]}(area.a););out body 400;`;
+  const q=`[out:json][timeout:30];area(${OSM_AREA})->.a;(node[${tag}](area.a);way[${tag}](area.a););out center 400;`;
   try{
     const r=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:'data='+encodeURIComponent(q),headers:{'Content-Type':'application/x-www-form-urlencoded'}});
-    const j=await r.json();
+    const txt=await r.text();let j;try{j=JSON.parse(txt);}catch(e){out.innerHTML='<div class="gen">OpenStreetMap is busy right now. Try again in a minute.</div>';return;}
     const known=new Set(ACC.map(a=>normName(a.name)));
     const rows=(j.elements||[]).map(e=>({name:(e.tags&&(e.tags['name:en']||e.tags.name))||'',
         phone:(e.tags&&(e.tags.phone||e.tags['contact:phone']))||'',
         web:(e.tags&&(e.tags.website||e.tags['contact:website']))||'',
         ig:(e.tags&&e.tags['contact:instagram'])||'',
-        area:(e.tags&&(e.tags['addr:suburb']||e.tags['addr:city']))||'',lat:e.lat,lng:e.lon}))
+        area:(e.tags&&(e.tags['addr:suburb']||e.tags['addr:city']))||'',
+        lat:e.lat!=null?e.lat:(e.center&&e.center.lat),lng:e.lon!=null?e.lon:(e.center&&e.center.lon)}))
       .filter(x=>x.name&&!known.has(normName(x.name)))
       .sort((a,b)=>((b.phone?2:0)+(b.web?1:0))-((a.phone?2:0)+(a.web?1:0)));
     OSMFOUND=rows;
