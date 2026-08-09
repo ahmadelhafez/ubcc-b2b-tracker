@@ -245,10 +245,12 @@ body.printing #app,body.printing #login,body.printing #toast,body.printing #seas
 <header>
   <span class="brand">UBCC · Legenda</span>
   <nav id="mainnav">
+    <button data-v="owner" class="owneronly" onclick="go('owner')">Cockpit</button>
     <button data-v="board" class="on" onclick="go('board')">Board</button>
     <button data-v="today" onclick="go('today')">Today</button>
     <button data-v="titles" onclick="go('titles')">Titles</button>
     <button data-v="analytics" onclick="go('analytics')">Analytics</button>
+    <button data-v="tools" class="salesonly" onclick="go('tools')">Tools</button>
     <button data-v="reports" onclick="go('reports')">Radar</button>
     <button data-v="health" onclick="go('health')">Health</button>
     <button data-v="declined" onclick="go('declined')">Declined</button>
@@ -290,6 +292,8 @@ body.printing #app,body.printing #login,body.printing #toast,body.printing #seas
   <div id="v-reports" class="hidden"></div>
   <div id="v-health" class="hidden"></div>
   <div id="v-declined" class="hidden"></div>
+  <div id="v-owner" class="hidden"></div>
+  <div id="v-tools" class="hidden"></div>
 </main>
 <div id="bottomnav">
   <button data-v="board" class="on" onclick="go('board')"><span class="ic">▦</span>Board</button>
@@ -322,13 +326,22 @@ let ENROLL=null, IDLE_T=null, FAILS=0, DRAG=null, lastSync=0, rtT=null;
 const REMEMBER = localStorage.getItem('b2b_remember')==='1';
 const shareCode = new URLSearchParams(location.search).get('share');
 
+const MEMBERS = {
+  'ahmad@legenda-b2b.app':{name:'Ahmad',role:'sales'},
+  'shereen@legenda-b2b.app':{name:'Shereen',role:'curator'},
+  'osama@legenda-b2b.app':{name:'Dr. Osama',role:'viewer'}};
+const CLOSE_REASONS = {Won:['Consignment shelf agreed','Wholesale order','Gifting/CSR deal','Event or pop-up','Library/institutional supply','Other'],
+  Dead:['No budget','Timing, revisit later','Chose a competitor','No decision maker access','Wrong titles/fit','Unreachable','Other']};
+const AREAS = ['Abdoun','Sweifieh','Shmeisani','Jabal Amman','Weibdeh','Abdali','Khalda','Dabouq','Deir Ghbar','Mecca St','Gardens','Downtown','Airport Road','Zarqa','Irbid','Dead Sea','Aqaba','Petra','Madaba','Other'];
 const active   = () => ACC.filter(a=>a.status!=='Declined');
 const declined = () => ACC.filter(a=>a.status==='Declined');
 const canEdit  = () => ROLE==='sales';
+const canCurate= () => ROLE==='sales'||ROLE==='curator';
 const by = () => localStorage.getItem('b2b_user')||'Team';
-const esc = s => String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+const esc = s => String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+const jsq = s => String(s??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;').replace(/</g,'&lt;');
 const today = () => new Date().toISOString().slice(0,10);
-function toast(m){const t=document.getElementById('toast');t.textContent=m;t.style.opacity=1;setTimeout(()=>t.style.opacity=0,2200);}
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.style.pointerEvents='none';t.style.opacity=1;setTimeout(()=>t.style.opacity=0,2200);}
 function kpi(l,v){return `<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div></div>`;}
 
 /* ============ THEME ============ */
@@ -355,37 +368,43 @@ async function boot(){
   if(!session){document.getElementById('login').classList.remove('hidden');return;}
   if(await mfaGateNeeded()){showMfaStep();return;}
   const email=session.user.email||'';
-  if(!['ahmad@legenda-b2b.app','shereen@legenda-b2b.app'].includes(email)){
+  if(!MEMBERS[email]){
     await sb.auth.signOut();
     document.getElementById('login').classList.remove('hidden');
     document.getElementById('app').classList.add('hidden');
-    document.getElementById('loginerr').textContent='"'+email+'" has no access to the B2B app. Use your ahmad@legenda-b2b.app account.';
+    document.getElementById('loginerr').textContent='"'+email+'" has no access to the B2B app. Use your legenda-b2b.app account.';
     return;}
-  ROLE=email.startsWith('shereen')?'curator':'sales';
-  localStorage.setItem('b2b_user',whoFromEmail(email));
+  ROLE=MEMBERS[email].role;
+  localStorage.setItem('b2b_user',MEMBERS[email].name);
   document.getElementById('login').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
-  if(ROLE==='curator'){document.querySelectorAll('.salesonly').forEach(e=>e.classList.add('hidden'));}
-  document.getElementById('who').textContent=whoFromEmail(email)+(ROLE==='curator'?' · curation':'');
+  if(ROLE!=='sales')document.querySelectorAll('.salesonly').forEach(e=>e.classList.add('hidden'));
+  if(ROLE!=='sales'&&ROLE!=='curator')document.querySelectorAll('.curatoronly').forEach(e=>e.classList.add('hidden'));
+  document.querySelectorAll('.owneronly').forEach(e=>e.classList.toggle('hidden',ROLE==='curator'));
+  document.getElementById('who').textContent=MEMBERS[email].name+(ROLE==='sales'?'':' · '+ROLE);
+  const home=ROLE==='curator'?'titles':(ROLE==='viewer'?'owner':'board');
   const cached=loadCacheInto();
-  if(cached){fillCatFilter();seasonBanner();goalRing();(ROLE==='curator')?go('titles'):renderBoard();}
-  else if(ROLE!=='curator'){document.getElementById('board').innerHTML='<div class="col"><div class="skel"></div><div class="skel"></div></div><div class="col"><div class="skel"></div></div><div class="col"><div class="skel"></div><div class="skel"></div></div>';}
+  if(cached){fillCatFilter();seasonBanner();goalRing();go(home);}
+  else if(ROLE==='sales'){document.getElementById('board').innerHTML='<div class="col"><div class="skel"></div><div class="skel"></div></div><div class="col"><div class="skel"></div></div><div class="col"><div class="skel"></div><div class="skel"></div></div>';}
   await loadAll();
   seasonBanner();goalRing();startIdleWatch();renderSecurityBadge();subscribeRealtime();watchVisibility();
-  if(ROLE==='curator'){go('titles');}else{go(VIEW);}
+  go(cached?VIEW:home);
 }
 async function loadAll(){
   const [a,t,s,l,o,r]=await Promise.all([
     sb.from('b2b_accounts').select('*').order('score',{ascending:false,nullsFirst:false}),
-    sb.from('b2b_touches').select('*').order('at',{ascending:false}).limit(800),
+    sb.from('b2b_touches').select('*').gte('at',new Date(Date.now()-200*864e5).toISOString()).order('at',{ascending:false}).limit(4000),
     sb.from('b2b_settings').select('*'),
     sb.from('b2b_lists').select('*').order('created_at',{ascending:false}),
     sb.from('b2b_opens').select('*').order('created_at',{ascending:false}).limit(300),
     sb.from('b2b_research_queue').select('*').order('requested_at',{ascending:false}).limit(100)]);
+  const err=[a,t,s,l,o,r].map(x=>x.error).filter(Boolean)[0];
+  if(err){toast('Sync problem: '+err.message);return false;}
   if(a.data)ACC=a.data; if(t.data)TOUCH=t.data; if(l.data)LISTS=l.data;
   if(o.data)OPENS=o.data; if(r.data)RQ=r.data;
-  if(s.data)SETTINGS=Object.fromEntries(s.data.map(r=>[r.key,r.value]));
-  lastSync=Date.now(); fillCatFilter(); saveCache(); }
+  if(s.data)SETTINGS=Object.fromEntries(s.data.map(x=>[x.key,x.value]));
+  if(CUR){const f=ACC.find(x=>x.id===CUR.id); if(f)CUR=f;}
+  lastSync=Date.now(); fillCatFilter(); saveCache(); return true; }
 function fillCatFilter(){const cats=[...new Set(active().map(x=>x.category).filter(Boolean))].sort();
   fcat.innerHTML='<option value="">All categories</option>'+cats.map(c=>`<option>${esc(c)}</option>`).join('');}
 
@@ -398,7 +417,9 @@ function subscribeRealtime(){
       if(key){
         const arr={ACC,TOUCH,LISTS,OPENS,RQ}[key];
         if(p.eventType==='DELETE'){const id=p.old&&p.old.id;if(id!=null){const i=arr.findIndex(x=>x.id===id);if(i>-1)arr.splice(i,1);}}
-        else{const row=p.new;const i=arr.findIndex(x=>x.id===row.id);if(i>-1)arr[i]=row;else arr.unshift(row);}
+        else{const row=p.new;const i=arr.findIndex(x=>x.id===row.id);
+          if(i>-1)Object.assign(arr[i],row);else arr.unshift(row);
+          if(key==='ACC'&&CUR&&CUR.id===row.id)Object.assign(CUR,row);}
         if(p.table==='b2b_opens'&&p.eventType==='UPDATE'&&p.new&&p.new.open_count>0){
           const acc=ACC.find(x=>x.id===p.new.account_id);
           toast('🔥 '+(acc?acc.name:'A prospect')+' opened your email');
@@ -414,7 +435,7 @@ function subscribeRealtime(){
     }).subscribe();
   }catch(e){}
 }
-function rerender(){({board:renderBoard,today:renderToday,titles:renderTitles,analytics:renderAnalytics,health:renderHealth,declined:renderDeclined}[VIEW]||renderBoard)();}
+function rerender(){({board:renderBoard,today:renderToday,titles:renderTitles,analytics:renderAnalytics,health:renderHealth,declined:renderDeclined,reports:renderReports,owner:renderOwner,tools:renderTools}[VIEW]||renderBoard)();}
 function watchVisibility(){document.addEventListener('visibilitychange',async()=>{
   if(document.visibilityState==='visible'&&Date.now()-lastSync>4*60*1000){await loadAll();rerender();}});}
 
@@ -464,7 +485,7 @@ async function openSecurity(){
   m.innerHTML=`<div class="box"><h3>Enable two-factor authentication</h3>
    <p style="font-size:12px;color:var(--ink2);margin:6px 0">Scan with Google Authenticator or Authy, then enter the 6-digit code.</p>
    <div style="background:#fff;padding:8px;text-align:center;border-radius:8px">${ENROLL.totp.qr_code}</div>
-   <p style="font-size:10px;color:var(--ink2);word-break:break-all;margin:6px 0">Manual key: ${ENROLL.totp.secret}</p>
+   <p style="font-size:10px;color:var(--ink2);word-break:break-all;margin:6px 0">Manual key: ${esc(ENROLL.totp.secret)}</p>
    <input id="mfaCode" inputmode="numeric" maxlength="6" placeholder="123456" style="width:100%;padding:9px;border:1px solid var(--line2);border-radius:6px">
    <div class="copyrow"><button class="btn primary" onclick="confirmEnroll()">Activate 2FA</button>
    <button class="btn" onclick="cancelEnroll()">Cancel</button></div></div>`;}
@@ -506,14 +527,19 @@ function goalRing(){
     <span class="lbl">${wk}/10</span>`;}
 
 /* ============ NAV ============ */
-function go(v){VIEW=v;
+function go(v){
+  if(ROLE==='curator'&&['owner','tools'].includes(v))v='titles';
+  if(ROLE==='viewer'&&v==='tools')v='owner';
+  VIEW=v;
   document.querySelectorAll('nav button,#bottomnav button[data-v]').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
-  ['board','today','titles','analytics','reports','health','declined'].forEach(x=>document.getElementById('v-'+x).classList.toggle('hidden',x!==v));
-  ({board:renderBoard,today:renderToday,titles:renderTitles,analytics:renderAnalytics,reports:renderReports,health:renderHealth,declined:renderDeclined}[v])();}
+  ['board','today','titles','analytics','reports','health','declined','owner','tools'].forEach(x=>document.getElementById('v-'+x).classList.toggle('hidden',x!==v));
+  ({board:renderBoard,today:renderToday,titles:renderTitles,analytics:renderAnalytics,reports:renderReports,health:renderHealth,declined:renderDeclined,owner:renderOwner,tools:renderTools}[v])();}
 function openMore(){
   const m=document.getElementById('modal');m.classList.remove('hidden');
+  const items=[['owner','Owner cockpit'],['analytics','Analytics'],['tools','Tools'],['reports','Radar reports'],['health','Data health'],['declined','Declined']]
+    .filter(([v])=>!(ROLE==='curator'&&['owner','tools'].includes(v))&&!(ROLE==='viewer'&&v==='tools'));
   m.innerHTML=`<div class="box"><h3>More</h3><div style="display:grid;gap:8px">
-   ${[['analytics','Analytics'],['reports','Radar reports'],['health','Data health'],['declined','Declined']].map(([v,l])=>`<button class="btn" onclick="document.getElementById('modal').classList.add('hidden');go('${v}')">${l}</button>`).join('')}
+   ${items.map(([v,l])=>`<button class="btn" onclick="document.getElementById('modal').classList.add('hidden');go('${v}')">${l}</button>`).join('')}
    <button class="btn" onclick="toggleTheme()">Toggle dark mode</button>
    <button class="btn" onclick="document.getElementById('modal').classList.add('hidden');openSecurity()">2FA settings</button>
    <button class="btn danger" onclick="sb.auth.signOut().then(()=>location.reload())">Log out</button>
@@ -522,8 +548,14 @@ function openMore(){
 /* ============ BOARD ============ */
 function filtered(){const q=(document.getElementById('q').value||'').toLowerCase(),c=fcat.value,ms=fscore.value;
   return active().filter(a=>(!c||a.category===c)&&(!ms||(a.score||0)>=+ms)&&(!q||(a.name+' '+(a.hook||'')+' '+(a.notes||'')).toLowerCase().includes(q)));}
-function lastAct(a){const t=TOUCH.find(x=>x.account_id===a.id);
-  return Math.max(t?+new Date(t.at):0, a.updated_at?+new Date(a.updated_at):0);}
+let LASTMAP=null, LASTMAP_N=-1;
+function touchMap(){
+  if(LASTMAP&&LASTMAP_N===TOUCH.length)return LASTMAP;
+  const m=new Map();
+  for(const t of TOUCH){const p=m.get(t.account_id),v=+new Date(t.at);if(!p||v>p)m.set(t.account_id,v);}
+  LASTMAP=m;LASTMAP_N=TOUCH.length;return m;}
+function lastAct(a){const t=touchMap().get(a.id)||0;
+  return Math.max(t, a.updated_at?+new Date(a.updated_at):0);}
 function rotDays(a){const th=ROT_DAYS[a.status];if(!th)return 0;
   const d=(Date.now()-lastAct(a))/864e5;return d>th?Math.floor(d):0;}
 function actionDot(a){
@@ -563,6 +595,8 @@ async function dropCard(status){
   const a=ACC.find(x=>x.id===id);if(!a||a.status===status)return;
   await changeStatus(a,status);}
 async function changeStatus(a,status){
+  if(!canEdit()||!a)return;
+  if(['Won','Dead'].includes(status)&&a.status!==status){askCloseReason(a,status);return;}
   const prev=a.status;a.status=status;rerender();  /* optimistic */
   const {error}=await sb.from('b2b_accounts').update({status,updated_by:by()}).eq('id',a.id);
   if(error){a.status=prev;rerender();toast('Failed: '+error.message);return;}
@@ -587,8 +621,9 @@ function askNext(a){
      <button class="btn primary" onclick="saveNext(${a.id},document.getElementById('nxD').value)">Set date</button>
      <button class="btn" onclick="document.getElementById('modal').classList.add('hidden')">Skip</button></div></div>`;}
 async function saveNext(id,date){
-  if(!date)return;
-  const a=ACC.find(x=>x.id===id);const na=document.getElementById('nxA')?document.getElementById('nxA').value:a.next_action;
+  if(!date||!canEdit())return;
+  const a=ACC.find(x=>x.id===id);if(!a)return;
+  const na=document.getElementById('nxA')?document.getElementById('nxA').value:a.next_action;
   const rc=document.getElementById('nxR')?document.getElementById('nxR').value:(a.recur||'');
   const prev={d:a.next_action_date,n:a.next_action,r:a.recur};a.next_action_date=date;a.next_action=na;a.recur=rc;
   document.getElementById('modal').classList.add('hidden');rerender();
@@ -605,13 +640,15 @@ async function doneAction(id){
     if(error){a.next_action_date=prev;rerender();toast('Failed');return;}
     saveCache();toast('Done · repeats '+a.recur+', next '+nd);goalRing();
   }else{
-    a.next_action_date=null;rerender();
-    await sb.from('b2b_accounts').update({next_action_date:null,updated_by:by()}).eq('id',id);
+    const prev=a.next_action_date;a.next_action_date=null;rerender();
+    const {error}=await sb.from('b2b_accounts').update({next_action_date:null,updated_by:by()}).eq('id',id);
+    if(error){a.next_action_date=prev;rerender();toast('Failed: '+error.message);return;}
     saveCache();goalRing();askNext(a);
   }}
 
 /* ============ TODAY ============ */
 async function snooze(id,days){
+  if(!canEdit())return;
   const a=ACC.find(x=>x.id===id);if(!a)return;
   const d=new Date();d.setDate(d.getDate()+days);const nd=d.toISOString().slice(0,10);
   const prev=a.next_action_date;a.next_action_date=nd;rerender();
@@ -628,7 +665,7 @@ function renderToday(){
   const row=(a,tag,cls,why)=>`<div class="rowitem"><span class="pill ${cls}">${tag}</span>
     <div class="grow"><b>${esc(a.name)}</b> <span style="color:var(--ink2);font-size:12px">${esc(a.next_action||a.deal_model||'')}</span>
     ${why&&why.length?`<div style="margin-top:2px"><span class="pill green">season: ${esc(why[0])}</span></div>`:''}</div>
-    ${canEdit()&&a.next_action_date?`<button class="btn small" style="color:var(--ok);border-color:var(--ok)" onclick="doneAction(${a.id})">✓ Done</button><button class="btn small" onclick="snooze(${a.id},1)">+1d</button><button class="btn small" onclick="snooze(${a.id},7)">+1w</button>`:''}
+    ${canEdit()&&a.next_action_date?`<button class="btn small" style="color:var(--ok);border-color:var(--ok)" onclick="doneAction(${a.id})">✓ Done</button><button class="btn small" onclick="snooze(${a.id},1)">+1d</button><button class="btn small" onclick="snooze(${a.id},7)">+1w</button><button class="btn small" onclick="downloadICS(${a.id})" title="Add to calendar">📅</button>`:''}
     <button class="btn small primary" onclick="openDossier(${a.id})">Open</button>
     ${canEdit()?`<button class="btn small" onclick="openDossier(${a.id},'outreach')">Compose</button>`:''}</div>`;
   el.innerHTML=`<h2 class="display" style="color:var(--teal);margin-bottom:10px">Today · ${new Date().toDateString()}</h2>
@@ -637,6 +674,7 @@ function renderToday(){
     ${rotting.length?`<h3 style="margin:12px 0 4px">Rotting, no touch past the stage limit (${rotting.length})</h3>`+rotting.map(a=>row(a,rotDays(a)+'d','amber')).join(''):''}
     <h3 style="margin:12px 0 4px">Best next accounts (score + season)</h3>
     ${best.map(x=>row(x.a,String(Math.round(x.s*10)/10),'green',x.why)).join('')||'<div class="empty"><div class="big">✓</div>Everything scheduled. Go drink coffee with a client.</div>'}
+    ${backupAge()>14&&canEdit()?`<div class="rowitem" style="border-color:var(--bad);margin-top:14px"><div class="grow"><b>No backup in ${backupAge()===999?'a while':backupAge()+' days'}.</b> The free database has no automatic backups.</div><button class="btn small primary" onclick="backupAll()">Back up now</button></div>`:''}
     <p style="color:var(--ink2);font-size:12px;margin-top:14px">Jordan rhythm: calls 10am-2pm land best. No business contact Friday 12-2pm. WhatsApp after a first email is expected, not pushy.</p>`;}
 
 /* ============ TITLES ============ */
@@ -673,12 +711,14 @@ function renderTitles(){
     ${rows||'<div class="empty"><div class="big">▤</div>No lists yet. Upload the first curated Excel above.</div>'}`;}
 const HDR_MAP=[[/^(title|book|name|العنوان|الكتاب|الاسم)/i,'title'],[/^(author|writer|المؤلف|الكاتب)/i,'author'],[/isbn|ردمك/i,'isbn'],[/price|سعر|jod|دينار/i,'price'],[/lang|لغة/i,'language'],[/categ|genre|تصنيف|فئة/i,'category'],[/note|ملاحظ/i,'note']];
 function mapHeader(h){for(const [re,k] of HDR_MAP)if(re.test(String(h).trim()))return k;return null;}
+let UPBUSY=false;
 async function uploadList(){
+  if(UPBUSY)return;
   const f=document.getElementById('upFile').files[0];
   const name=document.getElementById('upName').value.trim();
   const msg=document.getElementById('upMsg');
   if(!f||!name){msg.textContent='Choose a file and give the list a name.';return;}
-  msg.textContent='Loading engine...';
+  UPBUSY=true;msg.textContent='Loading engine...';
   try{
     await ensureXLSX();
     msg.textContent='Reading file...';
@@ -697,22 +737,30 @@ async function uploadList(){
     if(up.error){msg.textContent='Storage error: '+up.error.message;return;}
     const ins=await sb.from('b2b_lists').insert({account_id:document.getElementById('upAcc').value||null,
       name,note:document.getElementById('upNote').value.trim(),file_path:path,file_name:f.name,parsed,uploaded_by:by()}).select();
-    if(ins.error){msg.textContent='DB error: '+ins.error.message;return;}
+    if(ins.error){
+      try{await sb.storage.from('b2b-files').remove([path]);}catch(e2){}
+      msg.textContent='DB error: '+ins.error.message;return;}
     msg.textContent='';toast(`Uploaded: ${name} (${parsed.length} titles)`);
+    document.getElementById('upFile').value='';document.getElementById('upName').value='';document.getElementById('upNote').value='';
     await loadAll();renderTitles();
-  }catch(e){msg.textContent='Could not read this file: '+e.message;}}
+  }catch(e){msg.textContent='Could not read this file: '+e.message;}
+  finally{UPBUSY=false;}}
 async function downloadList(id){const l=LISTS.find(x=>x.id===id);if(!l||!l.file_path)return;
+  const w=window.open('','_blank');
   const {data,error}=await sb.storage.from('b2b-files').createSignedUrl(l.file_path,3600);
-  if(error){toast('Download error: '+error.message);return;}
-  window.open(data.signedUrl,'_blank');}
+  if(error||!data){if(w)w.close();toast('Download error: '+(error?error.message:'no file'));return;}
+  if(w)w.location=data.signedUrl;else window.location=data.signedUrl;}
 async function delList(id){if(!confirm('Delete this list? The Excel file is removed too.'))return;
   const l=LISTS.find(x=>x.id===id);
-  if(l&&l.file_path)await sb.storage.from('b2b-files').remove([l.file_path]);
-  await sb.from('b2b_lists').delete().eq('id',id);
+  const {error}=await sb.from('b2b_lists').delete().eq('id',id);
+  if(error){toast('Not deleted: '+error.message);return;}
+  if(l&&l.file_path){try{await sb.storage.from('b2b-files').remove([l.file_path]);}catch(e){}}
   toast('List deleted');await loadAll();renderTitles();}
 function copyShare(id){const l=LISTS.find(x=>x.id===id);if(!l)return;
+  if(!l.share_code){toast('This list has no share code yet, re-upload it');return;}
   navigator.clipboard.writeText(location.origin+location.pathname+'?share='+l.share_code)
-   .then(()=>toast('Share link copied (anyone with the link can view this list)'));}
+   .then(()=>toast('Share link copied (anyone with the link can view this list)'))
+   .catch(()=>toast('Copy failed, long-press to copy from the address bar'));}
 function copyListText(id){const l=LISTS.find(x=>x.id===id);if(!l)return;
   const acc=ACC.find(a=>a.id===l.account_id);
   const lines=[`${l.name}${acc?' · '+acc.name:''}`,'UBCC / Legenda Bookstore · legendabookstore.com',''];
@@ -729,7 +777,7 @@ function bookCard(t,i){
   const cover=t.cover||(isbn?`https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg?default=false`:'');
   const spine=`<div class="spine" style="background:${SPINE_COLORS[i%SPINE_COLORS.length]}">${esc((t.title||'?').charAt(0).toUpperCase())}</div>`;
   return `<div class="book"><div class="cov" data-title="${esc(t.title)}" data-author="${esc(t.author||'')}" data-i="${i}">
-      ${cover?`<img src="${cover}" loading="lazy" decoding="async" onerror="covErr(this)" data-i="${i}">`:spine}</div>
+      ${cover?`<img src="${esc(cover)}" loading="lazy" decoding="async" onerror="covErr(this)" data-i="${i}">`:spine}</div>
     <div class="inf"><div class="ti">${esc(t.title||'Untitled')}</div>
       <div class="au">${esc(t.author||'')}</div>
       <div class="meta">${t.price?`<span class="pr">JOD ${esc(t.price)}</span>`:'<span></span>'}<span class="is">${esc(t.isbn||'')}</span></div></div></div>`;}
@@ -768,7 +816,6 @@ function closeCatalog(){document.getElementById('catalog').classList.add('hidden
   if(shareCode){location.href=location.pathname;}}
 function printCatalog(){window.print();}
 async function renderSharedCatalog(code){
-  initClient();
   const c=document.getElementById('catalog');
   c.innerHTML='<div style="padding:40px;font-family:var(--font-d);color:var(--teal)">Loading selection...</div>';
   c.classList.remove('hidden');document.body.classList.add('printing');
@@ -859,6 +906,7 @@ async function confirmDecline(){
   sb.from('b2b_touches').insert({account_id:a.id,kind:'declined',detail:reason+(detail?' · '+detail:''),by_user:by()}).then(()=>{});
   saveCache();toast('Archived to Declined');}
 async function restoreAcc(id){
+  if(!canEdit())return;
   const a=ACC.find(x=>x.id===id);if(!a)return;
   const prevR=a.declined_reason;a.status='To Contact';a.declined_reason=null;rerender();
   const {error}=await sb.from('b2b_accounts').update({status:'To Contact',declined_reason:null,declined_at:null,declined_by:null,updated_by:by()}).eq('id',id);
@@ -874,9 +922,15 @@ function openDossier(id,tab){
   document.getElementById('overlay').classList.remove('hidden');
   const d=document.getElementById('dossier');d.classList.remove('hidden');
   d.innerHTML=`
-  <div style="display:flex;gap:6px;justify-content:flex-end">
+  <div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">
     ${!ro?`<button class="btn small primary" onclick="openMeeting(${a.id})">Meeting mode</button>`:''}
     <button class="btn small" onclick="closeDossier()">Close ✕</button></div>
+  <div class="copyrow" style="margin-top:4px">
+    <button class="btn small" onclick="buildProposal(${a.id})">Proposal</button>
+    <button class="btn small" onclick="buildAgreement(${a.id})">Agreement</button>
+    <button class="btn small" onclick="buildQBR(${a.id})">QBR</button>
+    ${!ro?`<button class="btn small" onclick="downloadICS(${a.id})">Add to calendar</button>`:''}
+    ${a.area?`<a class="btn small" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(a.name+' '+a.area+' Amman Jordan')}">Map</a>`:''}</div>
   <h2 class="display">${esc(a.name)}</h2>
   <div style="color:var(--ink2);font-size:12px">${esc(a.category||'')} · ${esc(a.area||'')} · Score ${a.score??'?'} ${a.verified===false?'· <b style="color:var(--rust)">UNVERIFIED</b>':''} ${a.status==='Declined'?'· <b style="color:var(--bad)">DECLINED: '+esc(a.declined_reason||'')+'</b>':''}</div>
   ${ro?'<p style="font-size:11px;color:var(--gold);margin-top:6px">Curation view: you can see everything and manage title lists; pipeline editing stays with Ahmad.</p>':''}
@@ -914,7 +968,10 @@ function openDossier(id,tab){
     <div class="field"><label>Est. value (JOD/year)</label><input id="f_est_value_jod" type="number" value="${a.est_value_jod||''}" ${ro?'disabled':''}></div>
     <div class="field"><label>Decision maker</label><input id="f_decision_maker" value="${esc(a.decision_maker)}" ${ro?'disabled':''}></div>
     <div class="field"><label>Repeat follow-up</label><select id="f_recur" ${ro?'disabled':''}>
-      ${['','weekly','monthly','quarterly'].map(r=>`<option value="${r}" ${a.recur===r?'selected':''}>${r||'no repeat'}</option>`).join('')}</select></div></div>
+      ${['','weekly','monthly','quarterly'].map(r=>`<option value="${r}" ${a.recur===r?'selected':''}>${r||'no repeat'}</option>`).join('')}</select></div>
+    <div class="field"><label>Area (for route planning)</label><select id="f_area" ${ro?'disabled':''}>
+      ${[''].concat(AREAS).concat(a.area&&!AREAS.includes(a.area)?[a.area]:[]).map(r=>`<option value="${esc(r)}" ${a.area===r?'selected':''}>${esc(r||'not set')}</option>`).join('')}</select></div></div>
+    <div style="font-size:11px;color:var(--ink2);margin-top:6px">Record quality: <b>${qualityScore(a).score}/100</b>${qualityScore(a).miss.length?' · missing '+esc(qualityScore(a).miss.join(', ')):' · complete'}</div>
     <div class="field" style="margin-top:8px"><label>Notes</label><textarea id="f_notes" rows="2" ${ro?'disabled':''}>${esc(a.notes)}</textarea></div>
     ${ro?'':'<div class="copyrow"><button class="btn primary" onclick="saveFields()">Save</button></div>'}</div>
 
@@ -947,7 +1004,7 @@ function closeDossier(){document.getElementById('overlay').classList.add('hidden
 async function statusFromDossier(s){if(!CUR)return;const a=CUR;closeDossier();await changeStatus(a,s);}
 async function saveFields(){
   if(!canEdit()||!CUR)return;
-  const u={};['contact_person','phone','email','instagram','next_action','next_action_date','est_value_jod','decision_maker','notes','recur'].forEach(k=>{const el=document.getElementById('f_'+k);if(el)u[k]=el.value||null;});
+  const u={};['contact_person','phone','email','instagram','next_action','next_action_date','est_value_jod','decision_maker','notes','recur','area'].forEach(k=>{const el=document.getElementById('f_'+k);if(el)u[k]=el.value||null;});
   if(u.est_value_jod==='')u.est_value_jod=null;if(u.next_action_date==='')u.next_action_date=null;if(u.recur===null)u.recur='';
   u.updated_by=by();
   Object.assign(CUR,u);  /* optimistic */
@@ -955,15 +1012,23 @@ async function saveFields(){
   toast(error?('Error: '+error.message):'Saved');if(!error)saveCache();rerender();}
 async function logTouch(kind){
   if(!canEdit()||!CUR)return;
-  const detail=document.getElementById('touchDetail').value||'';
+  const el=document.getElementById('touchDetail');
+  const detail=el?el.value:'';
   const a=CUR;
-  const {error}=await sb.from('b2b_touches').insert({account_id:a.id,kind,detail,by_user:by()});
+  const {data,error}=await sb.from('b2b_touches').insert({account_id:a.id,kind,detail,by_user:by()}).select();
   if(error){toast('Error: '+error.message);return;}
-  if(['call','whatsapp','email'].includes(kind)&&!a.outreach_date)
-    await sb.from('b2b_accounts').update({outreach_date:today(),updated_by:by()}).eq('id',a.id);
-  toast('Logged '+kind);goalRing();
-  await loadAll();openDossier(a.id);
-  if(['call','whatsapp','email','meeting','visit'].includes(kind))askNext(ACC.find(x=>x.id===a.id));}
+  if(data&&data[0]&&!TOUCH.some(t=>t.id===data[0].id))TOUCH.unshift(data[0]);
+  if(['call','whatsapp','email'].includes(kind)&&!a.outreach_date){
+    a.outreach_date=today();
+    sb.from('b2b_accounts').update({outreach_date:today(),updated_by:by()}).eq('id',a.id).then(()=>{});}
+  /* append without destroying unsaved edits in the dossier */
+  const list=document.getElementById('touchList');
+  if(list){const d=document.createElement('div');d.className='touch';
+    d.innerHTML=`<b>${esc(kind)}</b> ${esc(detail)}<div class="d">${esc(new Date().toLocaleString())} · ${esc(by())}</div>`;
+    list.prepend(d);}
+  if(el)el.value='';
+  saveCache();toast('Logged '+kind);goalRing();
+  if(['call','whatsapp','email','meeting','visit'].includes(kind))askNext(a);}
 async function openNew(){
   if(!canEdit())return;
   const name=prompt("Account name?");if(!name)return;
@@ -985,9 +1050,9 @@ async function createPixel(){
   if(!CUR||!canEdit())return;
   const label=(document.getElementById('g_goal')?document.getElementById('g_goal').value:'email');
   const {data,error}=await sb.from('b2b_opens').insert({account_id:CUR.id,label,created_by:by()}).select();
-  if(error){toast('Error: '+error.message);return;}
+  if(error||!data||!data[0]||!data[0].token){toast('Error: '+(error?error.message:'no token returned'));return;}
   const url=FN_URL+data[0].token;
-  await navigator.clipboard.writeText(url);
+  try{await navigator.clipboard.writeText(url);}catch(e){}
   document.getElementById('genOut').innerHTML+=`<div class="gen"><b>Tracking pixel created and URL copied.</b>\nIn Gmail: Insert photo (image icon) > Web Address (URL) > paste > Insert, then drag it tiny at the email's end.\nIn Outlook: Insert > Pictures > From web.\n\nYou will get a live alert here the moment ${esc(CUR.name)} opens the email, and the dossier will show "Email opened".\n\n${esc(url)}</div>`;
   toast('Pixel URL copied');}
 function latestRQ(accId){return RQ.find(r=>r.account_id===accId)||null;}
@@ -1028,13 +1093,405 @@ async function applyResearch(){
   sb.from('b2b_touches').insert({account_id:CUR.id,kind:'research',detail:'Applied Claude research ('+n+' fields)',by_user:by()}).then(()=>{});
   saveCache();toast(n+' fields updated');openDossier(CUR.id);}
 async function queueResearch(){
-  if(!CUR)return;
+  if(!CUR||!canEdit())return;
   const r=latestRQ(CUR.id);
   if(r&&r.status==='queued'){toast('Already queued');return;}
   const {error}=await sb.from('b2b_research_queue').insert({account_id:CUR.id,requested_by:by(),question:''});
   if(error){toast('Error: '+error.message);return;}
   toast('Queued: the Monday radar will research this account and fill the fields');
   await loadAll();openDossier(CUR.id);}
+
+/* ============ NEW v8 FUNCTIONS ============ */
+
+/* F1. Win/loss reason capture */
+function askCloseReason(a,status){
+  const m=document.getElementById('modal');m.classList.remove('hidden');
+  m.innerHTML=`<div class="box"><h3>${status==='Won'?'Won':'Closed'}: ${esc(a.name)}</h3>
+   <p style="font-size:12px;color:var(--ink2);margin-bottom:10px">${status==='Won'?'What kind of deal was it? This teaches the radar what converts.':'Why did it not go ahead? Honest answers make next quarter better.'}</p>
+   <div class="field"><label>Reason</label><select id="clR">${CLOSE_REASONS[status].map(r=>`<option>${esc(r)}</option>`).join('')}</select></div>
+   ${status==='Won'?`<div class="field" style="margin-top:8px"><label>Deal value (JOD/year, optional)</label><input id="clV" type="number" value="${a.est_value_jod||''}"></div>`:''}
+   <div class="field" style="margin-top:8px"><label>Note (optional)</label><textarea id="clN" rows="2"></textarea></div>
+   <div class="copyrow"><button class="btn primary" onclick="confirmClose(${a.id},'${status}')">Save</button>
+   <button class="btn" onclick="document.getElementById('modal').classList.add('hidden')">Cancel</button></div></div>`;}
+async function confirmClose(id,status){
+  const a=ACC.find(x=>x.id===id);if(!a)return;
+  const reason=document.getElementById('clR').value,note=document.getElementById('clN').value;
+  const vEl=document.getElementById('clV');
+  const prev={s:a.status,r:a.close_reason,v:a.est_value_jod};
+  const u={status,close_reason:reason,close_note:note,closed_at:new Date().toISOString(),updated_by:by()};
+  if(vEl&&vEl.value)u.est_value_jod=+vEl.value;
+  Object.assign(a,u);document.getElementById('modal').classList.add('hidden');rerender();
+  const {error}=await sb.from('b2b_accounts').update(u).eq('id',id);
+  if(error){Object.assign(a,prev);rerender();toast('Failed: '+error.message);return;}
+  sb.from('b2b_touches').insert({account_id:id,kind:'status',detail:status+': '+reason+(note?' · '+note:''),by_user:by()}).then(()=>{});
+  saveCache();toastUndo(status+' · '+reason,()=>revertStatus(id,prev));}
+
+/* F2. Undo */
+let UNDO=null;
+function toastUndo(msg,fn){
+  UNDO=fn;const t=document.getElementById('toast');
+  t.innerHTML=esc(msg)+' <button style="background:none;border:none;color:var(--brand);font-weight:700;cursor:pointer;text-decoration:underline" onclick="runUndo()">Undo</button>';
+  t.style.pointerEvents='auto';t.style.opacity=1;
+  setTimeout(()=>{t.style.opacity=0;t.style.pointerEvents='none';UNDO=null;},7000);}
+function runUndo(){if(UNDO){const f=UNDO;UNDO=null;document.getElementById('toast').style.opacity=0;f();}}
+async function revertStatus(id,prev){
+  const a=ACC.find(x=>x.id===id);if(!a)return;
+  Object.assign(a,{status:prev.s,close_reason:prev.r,est_value_jod:prev.v});rerender();
+  await sb.from('b2b_accounts').update({status:prev.s,close_reason:prev.r,close_note:'',closed_at:null,est_value_jod:prev.v,updated_by:by()}).eq('id',id);
+  saveCache();toast('Reverted');}
+
+/* F3. Forecast maths */
+function targets(){return Object.assign({quarter_target_jod:25000,weekly_touches:10},SETTINGS.targets||{});}
+function forecast(){
+  const A=active(),open=A.filter(a=>!['Won','Dead'].includes(a.status));
+  const weighted=open.reduce((s,a)=>s+(+a.est_value_jod||0)*STAGE_PROB[a.status],0);
+  const raw=open.reduce((s,a)=>s+(+a.est_value_jod||0),0);
+  const qStart=new Date();qStart.setMonth(Math.floor(qStart.getMonth()/3)*3,1);qStart.setHours(0,0,0,0);
+  const wonQ=A.filter(a=>a.status==='Won'&&a.closed_at&&new Date(a.closed_at)>=qStart);
+  const wonQV=wonQ.reduce((s,a)=>s+(+a.est_value_jod||0),0);
+  const closed=A.filter(a=>['Won','Dead'].includes(a.status));
+  const winRate=closed.length?A.filter(a=>a.status==='Won').length/closed.length:0;
+  const t=targets();
+  const gap=Math.max(0,t.quarter_target_jod-wonQV);
+  const coverage=gap>0?(weighted/gap):Infinity;
+  const needed=winRate>0?(1/winRate):3;
+  return {weighted,raw,wonQV,gap,coverage,needed,winRate,openCount:open.length,noValue:open.filter(a=>!a.est_value_jod).length,target:t.quarter_target_jod};}
+function stageVelocity(){
+  const out={};STATUSES.forEach(s=>out[s]=[]);
+  const byAcc={};TOUCH.filter(t=>t.kind==='status').forEach(t=>{(byAcc[t.account_id]=byAcc[t.account_id]||[]).push(t);});
+  Object.values(byAcc).forEach(list=>{
+    const arr=list.slice().sort((a,b)=>new Date(a.at)-new Date(b.at));
+    for(let i=0;i<arr.length-1;i++){
+      const m=/Moved to (.+)$/.exec(arr[i].detail||'');if(!m)continue;
+      const d=(new Date(arr[i+1].at)-new Date(arr[i].at))/864e5;
+      if(out[m[1]])out[m[1]].push(d);}});
+  const avg={};Object.entries(out).forEach(([k,v])=>{avg[k]=v.length?Math.round(v.reduce((a,b)=>a+b,0)/v.length):null;});
+  return avg;}
+
+/* F4. Owner Cockpit */
+function renderOwner(){
+  const el=document.getElementById('v-owner');const f=forecast(),A=active();
+  const wk=n=>TOUCH.filter(t=>t.kind!=='status'&&(Date.now()-new Date(t.at))<n*864e5).length;
+  const movedWk=TOUCH.filter(t=>t.kind==='status'&&(Date.now()-new Date(t.at))<7*864e5);
+  const newWk=A.filter(a=>a.date_added&&(Date.now()-new Date(a.date_added))<7*864e5).length;
+  const rotting=A.filter(a=>rotDays(a)>0).length;
+  const opened=OPENS.filter(o=>o.open_count>0).length;
+  const vel=stageVelocity();
+  const cov=f.coverage===Infinity?'target met':f.coverage.toFixed(1)+'x';
+  const covOK=f.coverage>=f.needed;
+  const top=A.filter(a=>!['Won','Dead'].includes(a.status)).sort((a,b)=>((+b.est_value_jod||0)*STAGE_PROB[b.status])-((+a.est_value_jod||0)*STAGE_PROB[a.status])).slice(0,8);
+  const reasons={};A.filter(a=>a.status==='Dead'&&a.close_reason).forEach(a=>reasons[a.close_reason]=(reasons[a.close_reason]||0)+1);
+  el.innerHTML=`<h2 class="display" style="color:var(--teal);margin-bottom:2px">Owner cockpit</h2>
+  <p style="color:var(--ink2);font-size:12px;margin-bottom:12px">Live view of the B2B channel · ${new Date().toLocaleDateString()} · updates by itself</p>
+  <div class="kpis">
+    ${kpi('Weighted forecast','JOD '+Math.round(f.weighted).toLocaleString())}
+    ${kpi('Won this quarter','JOD '+Math.round(f.wonQV).toLocaleString())}
+    ${kpi('Quarter target','JOD '+f.target.toLocaleString())}
+    ${kpi('Coverage of gap',cov)}
+    ${kpi('Open accounts',f.openCount)}
+    ${kpi('Win rate',Math.round(f.winRate*100)+'%')}</div>
+  <div class="sect"><h3>Is the quarter on track?</h3>
+    <div style="font-size:14px;line-height:1.8">
+      Gap to target: <b>JOD ${Math.round(f.gap).toLocaleString()}</b>.
+      Weighted pipeline covers it <b>${cov}</b>; at the current ${Math.round(f.winRate*100)}% win rate we want at least <b>${f.needed===Infinity?'-':f.needed.toFixed(1)+'x'}</b>.
+      <span class="pill ${covOK?'green':'amber'}">${covOK?'On track':'Needs more pipeline'}</span>
+      ${f.noValue?`<div style="font-size:12px;color:var(--ink2);margin-top:6px">${f.noValue} open accounts have no JOD value yet, so the real forecast is higher than shown.</div>`:''}
+    </div></div>
+  <div class="sect"><h3>This week</h3><div class="kpis" style="margin:0">
+    ${kpi('Touches',wk(7))}${kpi('Stage moves',movedWk.length)}${kpi('New accounts',newWk)}${kpi('Emails opened',opened)}${kpi('Going cold',rotting)}</div></div>
+  <div class="sect"><h3>Biggest opportunities now</h3>
+    ${top.map(a=>`<div class="rowitem"><div class="grow"><b>${esc(a.name)}</b> <span class="pill">${esc(a.status)}</span>
+      <span style="color:var(--ink2);font-size:11px">${esc(a.category||'')}${a.est_value_jod?' · JOD '+(+a.est_value_jod).toLocaleString()+'/yr':' · no value set'}</span></div>
+      <span class="pill">${Math.round((+a.est_value_jod||0)*STAGE_PROB[a.status]).toLocaleString()} weighted</span></div>`).join('')||'<p style="color:var(--ink2)">No open accounts.</p>'}</div>
+  <div class="sect"><h3>Average days in each stage</h3>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${STATUSES.filter(s=>!['Won','Dead'].includes(s)).map(s=>`<span class="pill">${esc(s)}: ${vel[s]==null?'-':vel[s]+'d'}</span>`).join('')}</div>
+    <p style="font-size:11px;color:var(--ink2);margin-top:6px">Long stages are where deals stall. Based on logged stage moves.</p></div>
+  ${Object.keys(reasons).length?`<div class="sect"><h3>Why deals were lost</h3>
+    ${Object.entries(reasons).sort((a,b)=>b[1]-a[1]).map(([r,n])=>`<div class="rowitem"><div class="grow">${esc(r)}</div><span class="pill red">${n}</span></div>`).join('')}</div>`:''}
+  <div class="copyrow"><button class="btn primary" onclick="buildDigest()">Weekly summary to share</button>
+    <button class="btn" onclick="window.print()">Print this page</button>
+    ${canEdit()?`<button class="btn" onclick="editTargets()">Set target</button>`:''}</div>`;}
+function editTargets(){
+  if(!canEdit())return;
+  const t=targets();const m=document.getElementById('modal');m.classList.remove('hidden');
+  m.innerHTML=`<div class="box"><h3>Targets</h3>
+   <div class="field"><label>Quarterly revenue target (JOD)</label><input id="tqt" type="number" value="${t.quarter_target_jod}"></div>
+   <div class="field" style="margin-top:8px"><label>Weekly touches goal</label><input id="twt" type="number" value="${t.weekly_touches}"></div>
+   <div class="copyrow"><button class="btn primary" onclick="saveTargets()">Save</button>
+   <button class="btn" onclick="document.getElementById('modal').classList.add('hidden')">Cancel</button></div></div>`;}
+async function saveTargets(){
+  const v={quarter_target_jod:+document.getElementById('tqt').value||0,weekly_touches:+document.getElementById('twt').value||10};
+  const {error}=await sb.from('b2b_settings').upsert({key:'targets',value:v},{onConflict:'key'});
+  if(error){toast('Failed: '+error.message);return;}
+  SETTINGS.targets=v;document.getElementById('modal').classList.add('hidden');saveCache();toast('Targets saved');renderOwner();}
+
+/* F5. Weekly digest, shareable */
+function digestText(){
+  const f=forecast(),A=active();
+  const wk=TOUCH.filter(t=>(Date.now()-new Date(t.at))<7*864e5);
+  const moves=wk.filter(t=>t.kind==='status');
+  const newWk=A.filter(a=>a.date_added&&(Date.now()-new Date(a.date_added))<7*864e5);
+  const hot=A.filter(a=>!['Won','Dead'].includes(a.status)&&OPENS.some(o=>o.account_id===a.id&&o.open_count>0)).slice(0,5);
+  const due=A.filter(a=>a.next_action_date&&a.next_action_date<=today()&&!['Won','Dead'].includes(a.status));
+  const L=[];
+  L.push('UBCC / Legenda B2B weekly summary · '+new Date().toLocaleDateString());
+  L.push('');
+  L.push('Pipeline: '+f.openCount+' open accounts, weighted JOD '+Math.round(f.weighted).toLocaleString());
+  L.push('Quarter: JOD '+Math.round(f.wonQV).toLocaleString()+' won of '+f.target.toLocaleString()+' target');
+  L.push('Activity: '+wk.filter(t=>t.kind!=='status').length+' touches, '+moves.length+' stage moves, '+newWk.length+' new accounts');
+  if(hot.length){L.push('');L.push('Read our email, worth calling:');hot.forEach(a=>L.push('- '+a.name));}
+  if(due.length){L.push('');L.push('Follow-ups due: '+due.length);}
+  const won=A.filter(a=>a.status==='Won'&&a.closed_at&&(Date.now()-new Date(a.closed_at))<7*864e5);
+  if(won.length){L.push('');L.push('Won this week: '+won.map(a=>a.name).join(', '));}
+  L.push('');L.push('Prepared by '+by()+' · Legenda B2B tracker');
+  return L.join('\n');}
+async function buildDigest(){
+  const txt=digestText();
+  const m=document.getElementById('modal');m.classList.remove('hidden');
+  m.innerHTML=`<div class="box"><h3>Weekly summary</h3>
+   <div class="gen" id="digTxt" style="max-height:40vh;overflow:auto">${esc(txt)}</div>
+   <div class="copyrow"><button class="btn primary" onclick="copyEl('digTxt')">Copy</button>
+   <button class="btn" onclick="shareDigest()">Share</button>
+   <button class="btn" onclick="document.getElementById('modal').classList.add('hidden')">Close</button></div></div>`;}
+async function shareDigest(){
+  const text=digestText();
+  if(navigator.share){try{await navigator.share({title:'Legenda B2B weekly',text});return;}catch(e){}}
+  window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank');}
+
+/* F6. Calendar invite (.ics) */
+function icsEsc(s){return String(s??'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');}
+function icsFold(line){const out=[];let s=line;
+  while(s.length>73){out.push(s.slice(0,73));s=' '+s.slice(73);}out.push(s);return out.join('\r\n');}
+function downloadICS(accId,dateStr,summaryIn){
+  const a=ACC.find(x=>x.id===accId);if(!a)return;
+  const d=(dateStr||a.next_action_date||today()).replace(/-/g,'');
+  const dt=d+'T090000';
+  const dtEnd=d+'T093000';
+  const uid=Date.now()+'-'+accId+'@legenda-b2b';
+  const stamp=new Date().toISOString().replace(/[-:]/g,'').split('.')[0]+'Z';
+  const summary=summaryIn||((a.next_action||'Follow up')+' · '+a.name);
+  const desc=[a.deal_model?('Model: '+a.deal_model):'',a.decision_maker?('Contact: '+a.decision_maker):'',a.phone?('Phone: '+a.phone):'',a.hook?('Why: '+a.hook.slice(0,300)):''].filter(Boolean).join('\n');
+  const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//UBCC Legenda//B2B//EN','CALSCALE:GREGORIAN','BEGIN:VEVENT',
+    'UID:'+uid,'DTSTAMP:'+stamp,'DTSTART:'+dt,'DTEND:'+dtEnd,
+    icsFold('SUMMARY:'+icsEsc(summary)),
+    icsFold('DESCRIPTION:'+icsEsc(desc)),
+    icsFold('LOCATION:'+icsEsc(a.area||'Amman')),
+    'BEGIN:VALARM','TRIGGER:-PT60M','ACTION:DISPLAY','DESCRIPTION:'+icsEsc(summary),'END:VALARM',
+    'END:VEVENT','END:VCALENDAR'];
+  const blob=new Blob([lines.join('\r\n')],{type:'text/calendar;charset=utf-8'});
+  const url=URL.createObjectURL(blob);const l=document.createElement('a');
+  l.href=url;l.download=(a.name.replace(/[^\w\u0600-\u06FF]+/g,'-').slice(0,40)||'followup')+'.ics';l.click();
+  setTimeout(()=>URL.revokeObjectURL(url),4000);
+  toast('Calendar invite downloaded');}
+
+/* F7. Documents: proposal, consignment agreement, QBR */
+function docShell(title,sub,body){
+  return `<div class="cat-head"><div class="brand2">UBCC · Legenda Bookstore · Amman</div>
+    <h1>${esc(title)}</h1><div class="sub">${esc(sub)}</div></div>
+   <div class="cat-tools"><button class="btn primary" onclick="window.print()">Print / Save as PDF</button>
+    <button class="btn" onclick="closeCatalog()">Close</button></div>
+   <div style="padding:26px 34px;max-width:900px;line-height:1.75;font-size:14px">${body}</div>
+   <div class="cat-foot">UBCC / Legenda Bookstore · legendabookstore.com · First Circle, Amman · If it is listed, it is available.</div>`;}
+function openDoc(html){const c=document.getElementById('catalog');c.innerHTML=html;c.classList.remove('hidden');document.body.classList.add('printing');}
+function buildProposal(id){
+  const a=ACC.find(x=>x.id===id);if(!a)return;
+  const lists=LISTS.filter(l=>l.account_id===id);
+  const v=segVal(a.category);
+  const val=+a.est_value_jod||0;
+  const body=`
+   <h2 class="display" style="color:var(--teal)">1. What we understand</h2>
+   <p>${esc(a.hook||v.pain)}</p>
+   <h2 class="display" style="color:var(--teal);margin-top:18px">2. What we propose</h2>
+   <p>${esc(v.gain.charAt(0).toUpperCase()+v.gain.slice(1))}. UBCC curates the selection, delivers it to ${esc(a.name)}, and rotates titles that do not move, so the shelf stays fresh without any work on your side.</p>
+   ${lists.length?`<p><b>Proposed selection:</b> ${lists.map(l=>esc(l.name)+' ('+(l.parsed?l.parsed.length:0)+' titles)').join(', ')}. A full illustrated catalog is attached or shared as a link.</p>`:''}
+   <h2 class="display" style="color:var(--teal);margin-top:18px">3. Commercial options</h2>
+   <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:8px">
+    <tr style="background:var(--surface2)"><th style="text-align:left;padding:8px;border:1px solid var(--line)">Option</th><th style="text-align:left;padding:8px;border:1px solid var(--line)">How it works</th><th style="text-align:left;padding:8px;border:1px solid var(--line)">Your cost today</th></tr>
+    <tr><td style="padding:8px;border:1px solid var(--line)"><b>Consignment (recommended)</b></td><td style="padding:8px;border:1px solid var(--line)">We stock and rotate; you pay only for what sells; monthly settlement, 60/40 split.</td><td style="padding:8px;border:1px solid var(--line)"><b>JOD 0</b></td></tr>
+    <tr><td style="padding:8px;border:1px solid var(--line)">Curated shelf subscription</td><td style="padding:8px;border:1px solid var(--line)">Fixed monthly fee, we refresh the selection every month.</td><td style="padding:8px;border:1px solid var(--line)">${val?('from JOD '+Math.round(val/12).toLocaleString()+'/month'):'quoted per shelf size'}</td></tr>
+    <tr><td style="padding:8px;border:1px solid var(--line)">Wholesale purchase</td><td style="padding:8px;border:1px solid var(--line)">You buy the titles outright at distributor pricing, Net 60 available.</td><td style="padding:8px;border:1px solid var(--line)">quoted per title list</td></tr></table>
+   <h2 class="display" style="color:var(--teal);margin-top:18px">4. Why UBCC / Legenda</h2>
+   <p>Jordanian book distributor since 1995. Over 20,000 imported English and Arabic titles, five branches and warehouses, JOD invoicing and local delivery in days rather than the weeks an international order takes. Partner shelves are already live in Amman venues.</p>
+   <h2 class="display" style="color:var(--teal);margin-top:18px">5. Next step</h2>
+   <p>A short meeting to agree the selection and start a ${esc(a.deal_model||'consignment')} pilot. We can have books on your shelf within two weeks of approval.</p>
+   <p style="margin-top:14px">Prepared for <b>${esc(a.contact_person||a.decision_maker||a.name)}</b> by Ahmad El-Hafez · UBCC / Legenda · ${new Date().toLocaleDateString()}</p>`;
+  openDoc(docShell('Partnership proposal','For '+a.name+' · '+(a.area||'Amman'),body));}
+function buildAgreement(id){
+  const a=ACC.find(x=>x.id===id);if(!a)return;
+  const body=`
+   <p>This consignment agreement is made between <b>UBCC (Universal Books & Creative Curricula)</b>, Amman, Jordan ("the Supplier") and <b>${esc(a.name)}</b>, ${esc(a.area||'Amman')} ("the Partner").</p>
+   <h2 class="display" style="color:var(--teal);margin-top:16px">1. Consigned stock</h2>
+   <p>The Supplier places an agreed selection of books with the Partner. A signed title list with quantities and retail prices in JOD forms part of this agreement.</p>
+   <h2 class="display" style="color:var(--teal);margin-top:16px">2. Ownership</h2>
+   <p>All consigned books remain the property of the Supplier until sold to an end customer. The Partner does not purchase the stock and carries no purchase obligation.</p>
+   <h2 class="display" style="color:var(--teal);margin-top:16px">3. Revenue split and settlement</h2>
+   <p>Net sales are split <b>60% Supplier / 40% Partner</b> unless otherwise agreed in writing. The Partner reports units sold and settles the Supplier's share monthly, within 30 days of the reporting date.</p>
+   <h2 class="display" style="color:var(--teal);margin-top:16px">4. Term, rotation and returns</h2>
+   <p>The initial term is <b>three months</b> and renews automatically unless either party gives 30 days written notice. The Supplier rotates slow-moving titles at no cost to the Partner. Unsold stock is returned to the Supplier in resalable condition at the end of the term.</p>
+   <h2 class="display" style="color:var(--teal);margin-top:16px">5. Care of stock</h2>
+   <p>The Partner displays the books in a clean, dry location and takes reasonable care of them. The Partner is responsible for stock lost, stolen or damaged beyond normal handling while in its possession, at the Supplier's net price.</p>
+   <h2 class="display" style="color:var(--teal);margin-top:16px">6. Pricing and promotion</h2>
+   <p>Retail prices are set by the Supplier and shown on the title list. Either party may propose promotions; discounts apply only when agreed in writing.</p>
+   <h2 class="display" style="color:var(--teal);margin-top:16px">7. General</h2>
+   <p>This agreement is governed by the laws of the Hashemite Kingdom of Jordan. It may be signed in Arabic and English; in case of conflict the Arabic version prevails.</p>
+   <table style="width:100%;margin-top:28px;font-size:13px"><tr>
+     <td style="padding:10px;width:50%">For UBCC / Legenda<br><br>Name: Ahmad El-Hafez<br><br>Signature: ______________<br><br>Date: __________</td>
+     <td style="padding:10px;width:50%">For ${esc(a.name)}<br><br>Name: ${esc(a.contact_person||'______________')}<br><br>Signature: ______________<br><br>Date: __________</td></tr></table>
+   <p style="font-size:11px;color:var(--ink2);margin-top:18px">Draft prepared ${new Date().toLocaleDateString()} for discussion. Have it reviewed before signing; this is a template, not legal advice.</p>`;
+  openDoc(docShell('Consignment agreement (draft)',a.name+' · '+new Date().toLocaleDateString(),body));}
+function buildQBR(id){
+  const a=ACC.find(x=>x.id===id);if(!a)return;
+  const tl=TOUCH.filter(t=>t.account_id===id).slice(0,12);
+  const lists=LISTS.filter(l=>l.account_id===id);
+  const body=`
+   <h2 class="display" style="color:var(--teal)">Where we are</h2>
+   <p>Partnership status: <b>${esc(a.status)}</b>${a.deal_model?(' · '+esc(a.deal_model)):''}${a.est_value_jod?(' · JOD '+(+a.est_value_jod).toLocaleString()+' per year'):''}.</p>
+   ${lists.length?`<p>Curated selections in place: ${lists.map(l=>esc(l.name)).join(', ')}.</p>`:''}
+   <h2 class="display" style="color:var(--teal);margin-top:16px">What happened this period</h2>
+   <ul style="margin-left:18px">${tl.map(t=>`<li>${esc(new Date(t.at).toLocaleDateString())} · ${esc(t.kind)}: ${esc(t.detail||'')}</li>`).join('')||'<li>No activity logged yet.</li>'}</ul>
+   <h2 class="display" style="color:var(--teal);margin-top:16px">What we recommend next quarter</h2>
+   <ul style="margin-left:18px">
+     <li>Refresh the selection: rotate titles that did not move, add new arrivals matched to your audience.</li>
+     <li>Seasonal push: align the shelf with the coming season (${esc(seasonInfo().map(s=>s.txt.split(':')[0]).join(', ')||'no active window')}).</li>
+     <li>Grow the space if sell-through supports it, or add a second location.</li></ul>
+   <h2 class="display" style="color:var(--teal);margin-top:16px">Agreed actions</h2>
+   <p>1. ______________________________  owner: ______  by: ______<br>
+      2. ______________________________  owner: ______  by: ______<br>
+      3. ______________________________  owner: ______  by: ______</p>
+   <p style="margin-top:14px">Prepared by ${esc(by())} · UBCC / Legenda · ${new Date().toLocaleDateString()}</p>`;
+  openDoc(docShell('Quarterly business review',a.name,body));}
+
+/* F8. Route planner */
+function renderRoutePanel(){
+  const A=active().filter(a=>!['Won','Dead'].includes(a.status));
+  const areas={};A.forEach(a=>{const k=a.area||'Other';(areas[k]=areas[k]||[]).push(a);});
+  const sorted=Object.entries(areas).sort((a,b)=>b[1].length-a[1].length);
+  return `<div class="sect"><h3>Visit route planner (Amman)</h3>
+   <p style="font-size:12px;color:var(--ink2);margin-bottom:8px">Pick an area, tick the stops, and get a Google Maps route. Mobile Maps links take 3 stops at a time, so long routes are split into legs automatically.</p>
+   <div class="field"><label>Area</label><select id="rtArea" onchange="renderRouteStops()">${sorted.map(([k,v])=>`<option value="${esc(k)}">${esc(k)} (${v.length})</option>`).join('')}</select></div>
+   <div id="rtStops" style="margin-top:10px"></div></div>`;}
+function renderRouteStops(){
+  const area=document.getElementById('rtArea').value;
+  const list=active().filter(a=>(a.area||'Other')===area&&!['Won','Dead'].includes(a.status));
+  document.getElementById('rtStops').innerHTML=
+   list.map(a=>`<label class="rowitem" style="cursor:pointer"><input type="checkbox" class="rtChk" value="${a.id}" style="width:auto">
+     <div class="grow"><b>${esc(a.name)}</b> <span class="pill">${esc(a.status)}</span></div></label>`).join('')
+   +`<div class="copyrow"><button class="btn primary" onclick="buildRoute()">Build route</button>
+     <button class="btn" onclick="document.querySelectorAll('.rtChk').forEach(c=>c.checked=true)">Select all</button></div>
+     <div id="rtOut"></div>`;}
+function buildRoute(){
+  const ids=[...document.querySelectorAll('.rtChk:checked')].map(c=>+c.value);
+  if(ids.length<2){toast('Pick at least 2 stops');return;}
+  const names=ids.map(i=>ACC.find(a=>a.id===i)).filter(Boolean).map(a=>a.name+', '+(a.area||'')+', Amman Jordan');
+  const legs=[];
+  for(let i=0;i<names.length-1;i+=4){
+    const chunk=names.slice(i,i+5);
+    const origin=encodeURIComponent(chunk[0]);
+    const dest=encodeURIComponent(chunk[chunk.length-1]);
+    const way=chunk.slice(1,-1).map(encodeURIComponent).join('%7C');
+    legs.push(`https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}${way?'&waypoints='+way:''}&travelmode=driving`);}
+  document.getElementById('rtOut').innerHTML=`<div class="gen">Route: ${esc(names.join(' → '))}</div>
+   <div class="copyrow">${legs.map((l,i)=>`<a class="btn primary" target="_blank" rel="noopener" href="${esc(l)}">Open leg ${i+1}${legs.length>1?' of '+legs.length:''}</a>`).join('')}
+   <button class="btn" onclick="planRouteDay()">Log as visits planned</button></div>`;}
+async function planRouteDay(){
+  if(!canEdit())return;
+  const ids=[...document.querySelectorAll('.rtChk:checked')].map(c=>+c.value);
+  const d=today();
+  for(const id of ids){
+    const a=ACC.find(x=>x.id===id);if(!a)continue;
+    a.next_action='Visit (route)';a.next_action_date=d;
+    await sb.from('b2b_accounts').update({next_action:'Visit (route)',next_action_date:d,updated_by:by()}).eq('id',id);}
+  saveCache();toast(ids.length+' visits scheduled for today');rerender();}
+
+/* F9. QR codes for shelves */
+let QRP=null;
+function ensureQR(){if(window.QRCode)return Promise.resolve();
+  if(!QRP)QRP=new Promise((res,rej)=>{const s=document.createElement('script');
+    s.src='https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js';s.onload=res;s.onerror=rej;document.head.appendChild(s);});
+  return QRP;}
+async function buildQR(){
+  const url=document.getElementById('qrUrl').value.trim()||'https://legendabookstore.com';
+  const label=document.getElementById('qrLabel').value.trim()||'Legenda Bookstore';
+  const box=document.getElementById('qrOut');box.innerHTML='Generating...';
+  try{await ensureQR();}catch(e){box.innerHTML='<span style="color:var(--bad)">Could not load the QR library (offline?)</span>';return;}
+  box.innerHTML=`<div id="qrCanvas" style="display:inline-block;padding:14px;background:#fff;border-radius:10px"></div>
+    <div style="font-family:var(--font-d);font-size:16px;margin-top:8px">${esc(label)}</div>
+    <div style="font-size:11px;color:var(--ink2)">${esc(url)}</div>
+    <div class="copyrow"><button class="btn" onclick="window.print()">Print this sheet</button></div>`;
+  new QRCode(document.getElementById('qrCanvas'),{text:url,width:220,height:220,correctLevel:QRCode.CorrectLevel.M});}
+
+/* F10. Full backup export */
+async function backupAll(){
+  toast('Preparing backup...');
+  try{await ensureXLSX();}catch(e){toast('Could not load the Excel engine');return;}
+  const wb=XLSX.utils.book_new();
+  const add=(name,rows)=>{if(!rows||!rows.length)rows=[{empty:''}];
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows.map(r=>{
+      const o={};Object.entries(r).forEach(([k,v])=>{o[k]=(v&&typeof v==='object')?JSON.stringify(v).slice(0,2000):csvSafe(v);});return o;})),name.slice(0,31));};
+  add('Accounts',ACC);add('Touches',TOUCH);add('Lists',LISTS.map(({parsed,...r})=>({...r,titles:(parsed||[]).length})));
+  add('Opens',OPENS);add('ResearchQueue',RQ);
+  const {data:rep}=await sb.from('b2b_reports').select('*');add('RadarReports',rep||[]);
+  XLSX.writeFile(wb,'ubcc-b2b-backup-'+today()+'.xlsx');
+  localStorage.setItem('b2b_last_backup',today());
+  toast('Backup downloaded');}
+function backupAge(){const d=localStorage.getItem('b2b_last_backup');
+  if(!d)return 999;return Math.floor((Date.now()-new Date(d))/864e5);}
+
+/* F11. Data quality + duplicates */
+function normName(s){return String(s||'').toLowerCase().replace(/\b(the|and|co|company|est|llc|jordan|amman)\b/g,'').replace(/[^a-z\u0600-\u06FF0-9]/g,'');}
+function findDupes(){
+  const A=ACC,seen={},out=[];
+  A.forEach(a=>{const k=normName(a.name);if(!k)return;(seen[k]=seen[k]||[]).push(a);});
+  Object.values(seen).filter(v=>v.length>1).forEach(v=>out.push(v));
+  for(let i=0;i<A.length;i++)for(let j=i+1;j<A.length;j++){
+    const x=normName(A[i].name),y=normName(A[j].name);
+    if(!x||!y||x===y)continue;
+    if(x.length>5&&y.length>5&&(x.includes(y)||y.includes(x)))out.push([A[i],A[j]]);}
+  return out;}
+function qualityScore(a){
+  let s=0;const miss=[];
+  const has=(k,pts,lbl)=>{if(a[k]&&String(a[k]).trim()){s+=pts;}else miss.push(lbl);};
+  has('hook',20,'research hook');has('decision_maker',15,'decision maker');
+  if(a.phone||a.email||a.instagram)s+=20;else miss.push('any contact channel');
+  has('contact_person',10,'contact name');has('area',10,'area');has('est_value_jod',15,'JOD value');
+  has('deal_model',10,'deal model');
+  return {score:s,miss};}
+function renderTools(){
+  const el=document.getElementById('v-tools');
+  const A=active();
+  const dupes=findDupes();
+  const weak=A.filter(a=>!['Won','Dead'].includes(a.status)).map(a=>({a,q:qualityScore(a)})).sort((x,y)=>x.q.score-y.q.score).slice(0,10);
+  const noVal=A.filter(a=>!['Won','Dead'].includes(a.status)&&!a.est_value_jod);
+  const age=backupAge();
+  el.innerHTML=`<h2 class="display" style="color:var(--teal);margin-bottom:10px">Tools</h2>
+  <div class="sect"><h3>Backup</h3>
+    <p style="font-size:12px;color:var(--ink2)">Supabase's free plan keeps no backups. Download everything as one Excel file, ideally weekly.</p>
+    ${age>14?`<p class="pill red" style="display:inline-block;margin-top:6px">Last backup ${age===999?'never':age+' days ago'}</p>`:`<p class="pill green" style="display:inline-block;margin-top:6px">Last backup ${age} days ago</p>`}
+    <div class="copyrow"><button class="btn primary" onclick="backupAll()">Download full backup</button>
+      <button class="btn" onclick="exportCSV()">Accounts CSV</button></div></div>
+  <div class="sect"><h3>Shelf QR code</h3>
+    <p style="font-size:12px;color:var(--ink2)">Print a QR for a partner shelf so customers can buy the same titles online.</p>
+    <div class="grid2"><div class="field"><label>Link</label><input id="qrUrl" value="https://legendabookstore.com"></div>
+      <div class="field"><label>Caption</label><input id="qrLabel" value="Scan for more titles · Legenda"></div></div>
+    <div class="copyrow"><button class="btn primary" onclick="buildQR()">Generate QR</button></div>
+    <div id="qrOut" style="margin-top:10px;text-align:center"></div></div>
+  ${renderRoutePanel()}
+  <div class="sect"><h3>Accounts missing a JOD value (${noVal.length})</h3>
+    <p style="font-size:12px;color:var(--ink2)">The forecast Dr. Osama sees only counts accounts with a value. Fill these in to make it real.</p>
+    ${noVal.slice(0,12).map(a=>`<div class="rowitem"><div class="grow"><b>${esc(a.name)}</b> <span class="pill">${esc(a.status)}</span></div>
+      <button class="btn small" onclick="openDossier(${a.id})">Set value</button></div>`).join('')||'<p style="color:var(--ink2)">All set.</p>'}</div>
+  <div class="sect"><h3>Weakest records (${weak.length})</h3>
+    ${weak.map(({a,q})=>`<div class="rowitem"><div class="grow"><b>${esc(a.name)}</b>
+      <div style="font-size:11px;color:var(--ink2)">missing: ${esc(q.miss.join(', '))}</div></div>
+      <span class="pill ${q.score<40?'red':'amber'}">${q.score}/100</span>
+      <button class="btn small" onclick="openDossier(${a.id})">Fix</button></div>`).join('')||'<p style="color:var(--ink2)">All records are strong.</p>'}</div>
+  <div class="sect"><h3>Possible duplicates (${dupes.length})</h3>
+    ${dupes.slice(0,12).map(g=>`<div class="rowitem"><div class="grow">${g.map(a=>esc(a.name)).join('  =  ')}</div>
+      ${g.map(a=>`<button class="btn small" onclick="openDossier(${a.id})">Open</button>`).join('')}</div>`).join('')||'<p style="color:var(--ink2)">None found.</p>'}</div>
+  <div class="sect"><h3>Activity log</h3>
+    ${TOUCH.slice(0,30).map(t=>{const a=ACC.find(x=>x.id===t.account_id);
+      return `<div class="touch"><b>${esc(t.kind)}</b> ${esc((a?a.name+' · ':'')+(t.detail||''))}<div class="d">${esc(new Date(t.at).toLocaleString())} · ${esc(t.by_user)}</div></div>`;}).join('')||'<p style="color:var(--ink2)">No activity yet.</p>'}</div>`;
+  if(document.getElementById('rtArea'))renderRouteStops();}
 
 /* ============ MEETING MODE ============ */
 function openMeeting(id){
@@ -1058,11 +1515,14 @@ function openMeeting(id){
         <input id="mtDate" type="date" style="margin-top:6px"></div>
       <div class="copyrow"><button class="btn primary" onclick="saveMeeting(${a.id})">Save debrief</button></div></div></div>`;}
 async function saveMeeting(id){
+  if(!canEdit())return;
   const out=document.getElementById('mtOut').value,notes=document.getElementById('mtNotes').value,
         nx=document.getElementById('mtNext').value,dt=document.getElementById('mtDate').value;
-  await sb.from('b2b_touches').insert({account_id:id,kind:'meeting',detail:out+(notes?' · '+notes:''),by_user:by()});
+  const t=await sb.from('b2b_touches').insert({account_id:id,kind:'meeting',detail:out+(notes?' · '+notes:''),by_user:by()});
+  if(t.error){toast('Not saved: '+t.error.message);return;}
   const u={updated_by:by()};if(nx)u.next_action=nx;if(dt)u.next_action_date=dt;
-  await sb.from('b2b_accounts').update(u).eq('id',id);
+  const r=await sb.from('b2b_accounts').update(u).eq('id',id);
+  if(r.error){toast('Meeting logged but next step failed: '+r.error.message);}
   document.getElementById('meet').classList.add('hidden');
   toast('Meeting logged');await loadAll();goalRing();rerender();}
 
@@ -1154,15 +1614,22 @@ function palettePick(i){const items=paletteItems(document.getElementById('pq').v
 function closePalette(){document.getElementById('palette').classList.add('hidden');}
 
 /* ============ CSV ============ */
+function csvSafe(v){const s=String(v??'');return /^[=+\-@\t\r]/.test(s)?"'"+s:s;}
 function exportCSV(){
-  const cols=['name','category','area','status','score','contact_person','phone','email','instagram','decision_maker','deal_model','hook','next_action','next_action_date','est_value_jod','declined_reason','notes'];
-  const rows=[cols.join(',')].concat(ACC.map(a=>cols.map(c=>'"'+String(a[c]??'').replace(/"/g,'""')+'"').join(',')));
+  const cols=['name','category','area','status','score','contact_person','phone','email','instagram','decision_maker','deal_model','hook','next_action','next_action_date','est_value_jod','close_reason','declined_reason','notes'];
+  const rows=[cols.join(',')].concat(ACC.map(a=>cols.map(c=>'"'+csvSafe(a[c]).replace(/"/g,'""')+'"').join(',')));
   const u=URL.createObjectURL(new Blob(["﻿"+rows.join("\n")],{type:'text/csv'}));
   const l=document.createElement('a');l.href=u;l.download='ubcc-b2b-pipeline.csv';l.click();}
 
 /* ============ GLOBAL LISTENERS + INIT ============ */
 document.addEventListener('DOMContentLoaded',()=>{
-  initClient();
+  if(typeof supabase==='undefined'){
+    document.getElementById('login').classList.remove('hidden');
+    document.getElementById('loginerr').textContent='Could not load required libraries. Check your connection and reload.';
+    return;}
+  try{initClient();}catch(e){
+    document.getElementById('login').classList.remove('hidden');
+    document.getElementById('loginerr').textContent='Startup error: '+e.message;return;}
   document.getElementById('lpass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
   document.getElementById('lcode').addEventListener('keydown',e=>{if(e.key==='Enter')verifyMfaLogin();});
   document.getElementById('lremember').checked=REMEMBER;
