@@ -155,9 +155,28 @@ textarea{resize:vertical}
 .pill.red{background:var(--badbg);color:var(--bad);font-weight:600}
 .pill.amber{background:var(--warnbg);color:var(--warn);font-weight:600}
 .pill.green{background:var(--okbg);color:var(--ok);font-weight:600}
-.report{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-m);padding:16px;margin-bottom:12px}
+.report{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-m);padding:26px 30px;margin-bottom:12px;max-width:900px}
 .report h3{color:var(--teal);font-family:var(--font-d)}
-.report pre{white-space:pre-wrap;font-family:inherit;font-size:13px;line-height:1.6;margin-top:8px}
+.rephead{border-bottom:2px solid var(--brand);padding-bottom:12px;margin-bottom:18px}
+.rephead h2{color:var(--teal);font-size:24px}
+.mdbody{font-size:14px;line-height:1.75;color:var(--ink)}
+.mdbody .mdh{font-family:var(--font-d);color:var(--teal);margin:22px 0 8px;line-height:1.3}
+.mdbody h2.mdh{font-size:20px;border-bottom:1px solid var(--line);padding-bottom:6px}
+.mdbody h3.mdh{font-size:16px}
+.mdbody h4.mdh{font-size:14px;color:var(--ink2);text-transform:uppercase;letter-spacing:.6px}
+.mdbody p{margin:9px 0}
+.mdbody ul,.mdbody ol{margin:9px 0 9px 22px}
+.mdbody li{margin:5px 0}
+.mdbody a{color:var(--brand2);word-break:break-word}
+.mdbody code{background:var(--surface2);border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-size:12px}
+.mdbody hr{border:none;border-top:1px solid var(--line);margin:18px 0}
+.mdbody b{color:var(--ink)}
+.tblwrap{overflow-x:auto;margin:12px 0}
+table.mdt{width:100%;border-collapse:collapse;font-size:12.5px;min-width:520px}
+table.mdt th{background:var(--surface2);text-align:left;padding:9px 11px;border-bottom:2px solid var(--line2);font-weight:600;color:var(--teal);white-space:nowrap}
+table.mdt td{padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+table.mdt tr:hover td{background:var(--surface2)}
+@media print{.controls,header,#season,#bottomnav{display:none!important}.report{border:none;max-width:none}}
 .empty{text-align:center;padding:36px 20px;color:var(--ink2)}
 .empty .big{font-size:34px;margin-bottom:8px}
 #toast{position:fixed;bottom:calc(76px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 22px;border-radius:22px;font-size:13px;z-index:300;opacity:0;transition:opacity .25s var(--ease);pointer-events:none;max-width:90vw}
@@ -859,11 +878,57 @@ function renderAnalytics(){
     return `<tr style="border-bottom:1px solid var(--line)"><td style="padding:7px 4px">${esc(k)}</td><td style="text-align:right;font-weight:600">${cur!==''?cur:'-'}</td><td style="text-align:right;color:var(--ink2)">target ${v}</td><td style="width:30%;padding:7px"><div style="background:var(--surface2);border-radius:6px;height:8px">${pct!==null?`<div style="width:${pct}%;background:${pct>=100?'var(--ok)':'var(--teal2)'};height:8px;border-radius:6px;transition:width .4s var(--ease)"></div>`:''}</div></td></tr>`;}).join('')+'</table>';}
 
 /* ============ REPORTS / HEALTH / DECLINED ============ */
+/* small, safe markdown renderer: escape first, then format. No raw HTML passes through. */
+function mdToHtml(src){
+  const inline=s=>esc(s)
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g,'$1<a href="$2" target="_blank" rel="noopener">$2</a>')
+    .replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>')
+    .replace(/(^|[^*])\*([^*\n]+)\*/g,'$1<i>$2</i>')
+    .replace(/`([^`]+)`/g,'<code>$1</code>');
+  const lines=String(src||'').replace(/\r/g,'').split('\n');
+  const out=[];let i=0,inUl=false,inOl=false;
+  const closeLists=()=>{if(inUl){out.push('</ul>');inUl=false;}if(inOl){out.push('</ol>');inOl=false;}};
+  while(i<lines.length){
+    const l=lines[i];
+    // table
+    if(/^\s*\|/.test(l)&&/^\s*\|[\s:|-]+\|?\s*$/.test(lines[i+1]||'')){
+      closeLists();
+      const cells=r=>r.trim().replace(/^\||\|$/g,'').split('|').map(c=>c.trim());
+      const head=cells(l);i+=2;
+      const body=[];
+      while(i<lines.length&&/^\s*\|/.test(lines[i])){body.push(cells(lines[i]));i++;}
+      out.push('<div class="tblwrap"><table class="mdt"><thead><tr>'+head.map(h=>`<th>${inline(h)}</th>`).join('')+'</tr></thead><tbody>'
+        +body.map(r=>'<tr>'+r.map(c=>`<td>${inline(c)}</td>`).join('')+'</tr>').join('')+'</tbody></table></div>');
+      continue;}
+    let m;
+    if(m=/^(#{1,6})\s+(.*)$/.exec(l)){closeLists();const lv=Math.min(m[1].length+1,4);out.push(`<h${lv} class="mdh">${inline(m[2])}</h${lv}>`);i++;continue;}
+    if(/^\s*([-*_])\1{2,}\s*$/.test(l)){closeLists();out.push('<hr>');i++;continue;}
+    if(m=/^\s*[-*+]\s+(.*)$/.exec(l)){if(inOl){out.push('</ol>');inOl=false;}if(!inUl){out.push('<ul>');inUl=true;}out.push(`<li>${inline(m[1])}</li>`);i++;continue;}
+    if(m=/^\s*\d+[.)]\s+(.*)$/.exec(l)){if(inUl){out.push('</ul>');inUl=false;}if(!inOl){out.push('<ol>');inOl=true;}out.push(`<li>${inline(m[1])}</li>`);i++;continue;}
+    if(!l.trim()){closeLists();i++;continue;}
+    closeLists();out.push(`<p>${inline(l)}</p>`);i++;}
+  closeLists();return out.join('');}
 async function renderReports(){
   const el=document.getElementById('v-reports');
-  const {data}=await sb.from('b2b_reports').select('*').order('run_date',{ascending:false}).limit(12);
-  el.innerHTML=(data&&data.length)?data.map(r=>`<div class="report"><h3>${esc(r.title||('Radar '+r.run_date))} · ${r.run_date}</h3><pre>${esc(r.body_md)}</pre></div>`).join(''):
-   '<div class="empty"><div class="big">📡</div>No radar reports yet. The Monday automation posts here after each run.</div>';}
+  const {data,error}=await sb.from('b2b_reports').select('*').order('run_date',{ascending:false}).limit(12);
+  if(error){el.innerHTML='<div class="empty">Could not load reports: '+esc(error.message)+'</div>';return;}
+  if(!data||!data.length){el.innerHTML='<div class="empty"><div class="big">📡</div>No radar reports yet. The Monday automation posts here after each run.</div>';return;}
+  el.innerHTML=`<div class="controls"><select id="repPick" onchange="showReport()">
+      ${data.map((r,i)=>`<option value="${i}">${esc(r.title||('Radar '+r.run_date))} · ${esc(r.run_date)}</option>`).join('')}</select>
+    <button class="btn" onclick="window.print()">Print / PDF</button>
+    <button class="btn" onclick="copyReport()">Copy text</button></div>
+    <div class="report" id="repBody"></div>`;
+  REPORTS=data;showReport();}
+let REPORTS=[];
+function showReport(){
+  const i=+((document.getElementById('repPick')||{}).value||0),r=REPORTS[i];if(!r)return;
+  document.getElementById('repBody').innerHTML=
+    `<div class="rephead"><h2 class="display">${esc(r.title||('Radar '+r.run_date))}</h2>
+     <div style="color:var(--ink2);font-size:12px">${esc(r.run_date)} · generated by the weekly research agent</div></div>
+     <div class="mdbody">${mdToHtml(r.body_md)}</div>`;}
+function copyReport(){const i=+((document.getElementById('repPick')||{}).value||0);
+  navigator.clipboard.writeText(REPORTS[i]?REPORTS[i].body_md:'').then(()=>toast('Report copied'));}
 function renderHealth(){
   const el=document.getElementById('v-health');const A=active();
   const unv=A.filter(a=>a.verified===false);
