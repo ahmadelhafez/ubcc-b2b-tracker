@@ -243,7 +243,7 @@ body.printing #app,body.printing #login,body.printing #toast,body.printing #seas
 
 <div id="app" class="hidden">
 <header>
-  <span class="brand">UBCC · Legenda</span>
+  <span class="brand">UBCC · Legenda</span><span id="ver" style="font-size:10px;color:var(--ink2)" title="app version"></span>
   <nav id="mainnav">
     <button data-v="owner" class="owneronly" onclick="go('owner')">Cockpit</button>
     <button data-v="board" class="on" onclick="go('board')">Board</button>
@@ -314,6 +314,7 @@ body.printing #app,body.printing #login,body.printing #toast,body.printing #seas
 
 <script>
 /* ============ CONFIG + STATE ============ */
+const APP_VERSION = "v10 · 9 Aug 2026";
 const SUPABASE_URL = "https://qxjlgfqvqhtrbttcgysw.supabase.co";
 const SUPABASE_KEY = "sb_publishable_FOeLR9B2zA6pRow0dcDqCw_2bHgiVar";
 const STATUSES = ["To Contact","Contacted","Meeting","Proposal","Pilot","Won","Dead"];
@@ -969,7 +970,7 @@ function openDossier(id,tab){
     <div class="field"><label>Instagram</label><input id="f_instagram" value="${esc(a.instagram)}" ${ro?'disabled':''}></div>
     <div class="field"><label>Next action</label><input id="f_next_action" value="${esc(a.next_action)}" ${ro?'disabled':''}></div>
     <div class="field"><label>Next action date</label><input id="f_next_action_date" type="date" value="${a.next_action_date||''}" ${ro?'disabled':''}></div>
-    <div class="field"><label>Est. value (JOD/year)</label><input id="f_est_value_jod" type="number" value="${a.est_value_jod||''}" ${ro?'disabled':''}></div>
+    <div class="field"><label>Deal value (JOD/year) ${a.est_value_jod?(isConfirmed(a)?'<span class="pill green">confirmed</span>':'<span class="pill amber">agent guess, please confirm</span>'):''}</label><input id="f_est_value_jod" type="number" value="${a.est_value_jod||''}" ${ro?'disabled':''}></div>
     <div class="field"><label>Decision maker</label><input id="f_decision_maker" value="${esc(a.decision_maker)}" ${ro?'disabled':''}></div>
     <div class="field"><label>Repeat follow-up</label><select id="f_recur" ${ro?'disabled':''}>
       ${['','weekly','monthly','quarterly'].map(r=>`<option value="${r}" ${a.recur===r?'selected':''}>${r||'no repeat'}</option>`).join('')}</select></div>
@@ -1010,6 +1011,10 @@ async function saveFields(){
   if(!canEdit()||!CUR)return;
   const u={};['contact_person','phone','email','instagram','next_action','next_action_date','est_value_jod','decision_maker','notes','recur','area'].forEach(k=>{const el=document.getElementById('f_'+k);if(el)u[k]=el.value||null;});
   if(u.est_value_jod==='')u.est_value_jod=null;if(u.next_action_date==='')u.next_action_date=null;if(u.recur===null)u.recur='';
+  /* a human typing a value makes it confirmed; clearing it drops the flag */
+  if(u.est_value_jod!=null&&String(u.est_value_jod)!==String(CUR.est_value_jod??''))u.value_source='confirmed';
+  else if(u.est_value_jod!=null&&CUR.value_source==='confirmed')u.value_source='confirmed';
+  else if(u.est_value_jod==null)u.value_source='';
   u.updated_by=by();
   const id=CUR.id;
   Object.assign(CUR,u);  /* optimistic */
@@ -1288,7 +1293,7 @@ async function confirmClose(id,status){
   const vEl=document.getElementById('clV');
   const prev={s:a.status,r:a.close_reason,v:a.est_value_jod};
   const u={status,close_reason:reason,close_note:note,closed_at:new Date().toISOString(),updated_by:by()};
-  if(vEl&&vEl.value)u.est_value_jod=+vEl.value;
+  if(vEl&&vEl.value){u.est_value_jod=+vEl.value;u.value_source='confirmed';}
   Object.assign(a,u);document.getElementById('modal').classList.add('hidden');rerender();
   const {error}=await sb.from('b2b_accounts').update(u).eq('id',id);
   if(error){Object.assign(a,prev);rerender();toast('Failed: '+error.message);return;}
@@ -1310,21 +1315,29 @@ async function revertStatus(id,prev){
   saveCache();toast('Reverted');}
 
 /* F3. Forecast maths */
-function targets(){return Object.assign({quarter_target_jod:25000,weekly_touches:10},SETTINGS.targets||{});}
+function targets(){return Object.assign({quarter_target_jod:0,weekly_touches:10},SETTINGS.targets||{});}
+const isConfirmed=a=>a.value_source==='confirmed';
+/* Money maths keeps confirmed figures and machine estimates strictly apart.
+   Confirmed = a person typed it. Estimate = the weekly radar guessed it. */
 function forecast(){
   const A=active(),open=A.filter(a=>!['Won','Dead'].includes(a.status));
-  const weighted=open.reduce((s,a)=>s+(+a.est_value_jod||0)*STAGE_PROB[a.status],0);
-  const raw=open.reduce((s,a)=>s+(+a.est_value_jod||0),0);
+  const val=a=>+a.est_value_jod||0;
+  const wSum=arr=>arr.reduce((s,a)=>s+val(a)*STAGE_PROB[a.status],0);
+  const conf=open.filter(isConfirmed), est=open.filter(a=>val(a)&&!isConfirmed(a));
+  const weightedConfirmed=wSum(conf), weightedEstimated=wSum(est);
   const qStart=new Date();qStart.setMonth(Math.floor(qStart.getMonth()/3)*3,1);qStart.setHours(0,0,0,0);
   const wonQ=A.filter(a=>a.status==='Won'&&a.closed_at&&new Date(a.closed_at)>=qStart);
-  const wonQV=wonQ.reduce((s,a)=>s+(+a.est_value_jod||0),0);
+  const wonQV=wonQ.filter(isConfirmed).reduce((s,a)=>s+val(a),0);
+  const wonQCount=wonQ.length, wonQUnpriced=wonQ.filter(a=>!isConfirmed(a)).length;
   const closed=A.filter(a=>['Won','Dead'].includes(a.status));
   const winRate=closed.length?A.filter(a=>a.status==='Won').length/closed.length:0;
-  const t=targets();
-  const gap=Math.max(0,t.quarter_target_jod-wonQV);
-  const coverage=gap>0?(weighted/gap):Infinity;
-  const needed=winRate>0?(1/winRate):3;
-  return {weighted,raw,wonQV,gap,coverage,needed,winRate,openCount:open.length,noValue:open.filter(a=>!a.est_value_jod).length,target:t.quarter_target_jod};}
+  const t=targets(), hasTarget=t.quarter_target_jod>0;
+  const gap=hasTarget?Math.max(0,t.quarter_target_jod-wonQV):0;
+  const coverage=(hasTarget&&gap>0)?(weightedConfirmed/gap):null;
+  const needed=winRate>0?(1/winRate):null;
+  return {weightedConfirmed,weightedEstimated,wonQV,wonQCount,wonQUnpriced,gap,coverage,needed,winRate,hasTarget,
+    openCount:open.length,confirmedCount:conf.length,estimatedCount:est.length,
+    noValue:open.filter(a=>!val(a)).length,target:t.quarter_target_jod,closedCount:closed.length};}
 function stageVelocity(){
   const out={};STATUSES.forEach(s=>out[s]=[]);
   const byAcc={};TOUCH.filter(t=>t.kind==='status').forEach(t=>{(byAcc[t.account_id]=byAcc[t.account_id]||[]).push(t);});
@@ -1346,32 +1359,52 @@ function renderOwner(){
   const rotting=A.filter(a=>rotDays(a)>0).length;
   const opened=OPENS.filter(o=>o.open_count>0).length;
   const vel=stageVelocity();
-  const cov=f.coverage===Infinity?'target met':f.coverage.toFixed(1)+'x';
-  const covOK=f.coverage>=f.needed;
+  const money=n=>'JOD '+Math.round(n).toLocaleString();
   const top=A.filter(a=>!['Won','Dead'].includes(a.status)).sort((a,b)=>((+b.est_value_jod||0)*STAGE_PROB[b.status])-((+a.est_value_jod||0)*STAGE_PROB[a.status])).slice(0,8);
   const reasons={};A.filter(a=>a.status==='Dead'&&a.close_reason).forEach(a=>reasons[a.close_reason]=(reasons[a.close_reason]||0)+1);
+  const noRealMoney=f.confirmedCount===0&&f.wonQV===0;
   el.innerHTML=`<h2 class="display" style="color:var(--teal);margin-bottom:2px">Owner cockpit</h2>
-  <p style="color:var(--ink2);font-size:12px;margin-bottom:12px">Live view of the B2B channel · ${new Date().toLocaleDateString()} · updates by itself</p>
+  <p style="color:var(--ink2);font-size:12px;margin-bottom:12px">B2B channel · ${new Date().toLocaleDateString()}</p>
+
+  ${noRealMoney?`<div class="sect" style="border-color:var(--warn);background:var(--warnbg)">
+    <h3 style="color:var(--warn)">No confirmed financial data yet</h3>
+    <div style="font-size:14px;line-height:1.7">Nothing below is real revenue. No deal value has been confirmed by a person, and no quarterly target has been set.
+    The JOD figures that exist are <b>machine estimates written by the weekly research agent</b> to help prioritise which accounts to chase. They are guesses, not money.
+    <div style="margin-top:8px">To make this page real: open an account, type the actual deal value, and save. That value becomes confirmed. Set a quarter target with the button below.</div></div></div>`:''}
+
   <div class="kpis">
-    ${kpi('Weighted forecast','JOD '+Math.round(f.weighted).toLocaleString())}
-    ${kpi('Won this quarter','JOD '+Math.round(f.wonQV).toLocaleString())}
-    ${kpi('Quarter target','JOD '+f.target.toLocaleString())}
-    ${kpi('Coverage of gap',cov)}
+    ${kpi('Confirmed pipeline (weighted)',f.confirmedCount?money(f.weightedConfirmed):'no data')}
+    ${kpi('Won this quarter',f.wonQCount?(f.wonQV?money(f.wonQV):'unpriced'):'none yet')}
+    ${kpi('Quarter target',f.hasTarget?money(f.target):'not set')}
     ${kpi('Open accounts',f.openCount)}
-    ${kpi('Win rate',Math.round(f.winRate*100)+'%')}</div>
-  <div class="sect"><h3>Is the quarter on track?</h3>
+    ${kpi('Deals closed to date',f.closedCount)}
+    ${kpi('Win rate',f.closedCount?Math.round(f.winRate*100)+'%':'no closed deals')}</div>
+
+  <div class="sect"><h3>Where the money figures come from</h3>
+    <table style="width:100%;font-size:13px;border-collapse:collapse">
+     <tr style="border-bottom:1px solid var(--line)"><td style="padding:7px">Confirmed by a person</td>
+       <td style="text-align:right"><b>${f.confirmedCount}</b> accounts</td>
+       <td style="text-align:right"><b>${money(f.weightedConfirmed)}</b> weighted</td></tr>
+     <tr style="border-bottom:1px solid var(--line)"><td style="padding:7px">Estimated by the research agent <span class="pill amber">guess</span></td>
+       <td style="text-align:right">${f.estimatedCount} accounts</td>
+       <td style="text-align:right;color:var(--ink2)">~${money(f.weightedEstimated)} weighted</td></tr>
+     <tr><td style="padding:7px">No value at all</td><td style="text-align:right">${f.noValue} accounts</td><td></td></tr></table>
+    <p style="font-size:11px;color:var(--ink2);margin-top:6px">Only the confirmed line is treated as real anywhere in this app. Estimates are shown separately and never added into the headline figure.</p></div>
+
+  ${f.hasTarget?`<div class="sect"><h3>Is the quarter on track?</h3>
     <div style="font-size:14px;line-height:1.8">
-      Gap to target: <b>JOD ${Math.round(f.gap).toLocaleString()}</b>.
-      Weighted pipeline covers it <b>${cov}</b>; at the current ${Math.round(f.winRate*100)}% win rate we want at least <b>${f.needed===Infinity?'-':f.needed.toFixed(1)+'x'}</b>.
-      <span class="pill ${covOK?'green':'amber'}">${covOK?'On track':'Needs more pipeline'}</span>
-      ${f.noValue?`<div style="font-size:12px;color:var(--ink2);margin-top:6px">${f.noValue} open accounts have no JOD value yet, so the real forecast is higher than shown.</div>`:''}
-    </div></div>
+      Target ${money(f.target)}, confirmed won ${money(f.wonQV)}, gap <b>${money(f.gap)}</b>.
+      ${f.coverage!=null?`Confirmed weighted pipeline covers the gap <b>${f.coverage.toFixed(1)}x</b>${f.needed?`; at a ${Math.round(f.winRate*100)}% win rate you want about <b>${f.needed.toFixed(1)}x</b>`:''}.
+      <span class="pill ${f.needed&&f.coverage>=f.needed?'green':'amber'}">${f.needed&&f.coverage>=f.needed?'On track':'Needs more confirmed pipeline'}</span>`:'Target already met this quarter.'}
+      ${f.wonQUnpriced?`<div style="font-size:12px;color:var(--ink2);margin-top:6px">${f.wonQUnpriced} won deal(s) this quarter have no confirmed value, so this understates reality.</div>`:''}
+    </div></div>`:`<div class="sect"><h3>Quarter target</h3>
+    <div style="font-size:14px">No target set, so no coverage or on-track judgement is shown. ${canEdit()?'Use "Set target" below.':'Ahmad can set one.'}</div></div>`}
   <div class="sect"><h3>This week</h3><div class="kpis" style="margin:0">
     ${kpi('Touches',wk(7))}${kpi('Stage moves',movedWk.length)}${kpi('New accounts',newWk)}${kpi('Emails opened',opened)}${kpi('Going cold',rotting)}</div></div>
   <div class="sect"><h3>Biggest opportunities now</h3>
     ${top.map(a=>`<div class="rowitem"><div class="grow"><b>${esc(a.name)}</b> <span class="pill">${esc(a.status)}</span>
-      <span style="color:var(--ink2);font-size:11px">${esc(a.category||'')}${a.est_value_jod?' · JOD '+(+a.est_value_jod).toLocaleString()+'/yr':' · no value set'}</span></div>
-      <span class="pill">${Math.round((+a.est_value_jod||0)*STAGE_PROB[a.status]).toLocaleString()} weighted</span></div>`).join('')||'<p style="color:var(--ink2)">No open accounts.</p>'}</div>
+      <span style="color:var(--ink2);font-size:11px">${esc(a.category||'')}${a.est_value_jod?(isConfirmed(a)?' · JOD '+(+a.est_value_jod).toLocaleString()+'/yr':' · ~JOD '+(+a.est_value_jod).toLocaleString()+' estimated'):' · no value set'}</span></div>
+      ${a.est_value_jod?`<span class="pill ${isConfirmed(a)?'green':'amber'}">${isConfirmed(a)?'confirmed':'guess'}</span>`:''}</div>`).join('')||'<p style="color:var(--ink2)">No open accounts.</p>'}</div>
   <div class="sect"><h3>Average days in each stage</h3>
     <div style="display:flex;gap:8px;flex-wrap:wrap">${STATUSES.filter(s=>!['Won','Dead'].includes(s)).map(s=>`<span class="pill">${esc(s)}: ${vel[s]==null?'-':vel[s]+'d'}</span>`).join('')}</div>
     <p style="font-size:11px;color:var(--ink2);margin-top:6px">Long stages are where deals stall. Based on logged stage moves.</p></div>
@@ -1813,7 +1846,18 @@ document.addEventListener('DOMContentLoaded',()=>{
     if(e.target.matches('input,textarea,select'))return;
     if(e.key==='/'){e.preventDefault();go('board');document.getElementById('q').focus();}
     if(e.key==='Escape'){closePalette();document.getElementById('modal').classList.add('hidden');}});
-  if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js').catch(()=>{});}
+  const vEl=document.getElementById('ver'); if(vEl)vEl.textContent=APP_VERSION;
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('./sw.js').then(reg=>{
+      reg.update();
+      /* when a new version installs, take over straight away instead of waiting for every tab to close */
+      reg.addEventListener('updatefound',()=>{const nw=reg.installing;if(!nw)return;
+        nw.addEventListener('statechange',()=>{
+          if(nw.state==='installed'&&navigator.serviceWorker.controller){
+            toast('New version ready, reloading...');setTimeout(()=>location.reload(),1200);}});});
+      setInterval(()=>reg.update(),30*60*1000);
+    }).catch(()=>{});
+  }
   boot();});
 </script>
 </body>
