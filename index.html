@@ -1503,8 +1503,14 @@ function digestText(){
   const L=[];
   L.push('UBCC / Legenda B2B weekly summary · '+new Date().toLocaleDateString());
   L.push('');
-  L.push('Pipeline: '+f.openCount+' open accounts, weighted JOD '+Math.round(f.weighted).toLocaleString());
-  L.push('Quarter: JOD '+Math.round(f.wonQV).toLocaleString()+' won of '+f.target.toLocaleString()+' target');
+  L.push('Pipeline: '+f.openCount+' open accounts');
+  L.push(f.confirmedCount
+    ? 'Confirmed weighted pipeline: JOD '+Math.round(f.weightedConfirmed).toLocaleString()+' across '+f.confirmedCount+' priced accounts'
+    : 'Confirmed pipeline value: none yet, no deal values have been confirmed');
+  if(f.estimatedCount)L.push('(plus '+f.estimatedCount+' accounts with rough agent estimates, not confirmed figures)');
+  L.push('Quarter: '+(f.wonQCount?f.wonQCount+' deal(s) won':'no deals won yet')
+    +(f.wonQV?', JOD '+Math.round(f.wonQV).toLocaleString()+' confirmed':'')
+    +(f.hasTarget?' · target JOD '+f.target.toLocaleString():' · no target set'));
   L.push('Activity: '+wk.filter(t=>t.kind!=='status').length+' touches, '+moves.length+' stage moves, '+newWk.length+' new accounts');
   if(hot.length){L.push('');L.push('Read our email, worth calling:');hot.forEach(a=>L.push('- '+a.name));}
   if(due.length){L.push('');L.push('Follow-ups due: '+due.length);}
