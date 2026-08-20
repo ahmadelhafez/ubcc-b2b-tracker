@@ -333,7 +333,7 @@ body.printing #app,body.printing #login,body.printing #toast,body.printing #seas
 
 <script>
 /* ============ CONFIG + STATE ============ */
-const APP_VERSION = "v10 · 9 Aug 2026";
+const APP_VERSION = "v11 · 11 Aug 2026";
 const SUPABASE_URL = "https://qxjlgfqvqhtrbttcgysw.supabase.co";
 const SUPABASE_KEY = "sb_publishable_FOeLR9B2zA6pRow0dcDqCw_2bHgiVar";
 const STATUSES = ["To Contact","Contacted","Meeting","Proposal","Pilot","Won","Dead"];
@@ -349,7 +349,7 @@ const shareCode = new URLSearchParams(location.search).get('share');
 
 const MEMBERS = {
   'ahmad@legenda-b2b.app':{name:'Ahmad',role:'sales'},
-  'shereen@legenda-b2b.app':{name:'Shereen',role:'curator'},
+  'shereen@legenda-b2b.app':{name:'Shereen',role:'sales'},
   'osama@legenda-b2b.app':{name:'Dr. Osama',role:'viewer'}};
 const CLOSE_REASONS = {Won:['Consignment shelf agreed','Wholesale order','Gifting/CSR deal','Event or pop-up','Library/institutional supply','Other'],
   Dead:['No budget','Timing, revisit later','Chose a competitor','No decision maker access','Wrong titles/fit','Unreachable','Other']};
@@ -403,7 +403,7 @@ async function boot(){
   if(ROLE!=='sales'&&ROLE!=='curator')document.querySelectorAll('.curatoronly').forEach(e=>e.classList.add('hidden'));
   document.querySelectorAll('.owneronly').forEach(e=>e.classList.toggle('hidden',ROLE==='curator'));
   document.getElementById('who').textContent=MEMBERS[email].name+(ROLE==='sales'?'':' · '+ROLE);
-  const home=ROLE==='curator'?'titles':(ROLE==='viewer'?'owner':'board');
+  const home=ROLE==='curator'?'titles':(ROLE==='viewer'?'owner':(MEMBERS[email].name==='Shereen'?'titles':'board'));
   const cached=loadCacheInto();
   if(cached){fillCatFilter();seasonBanner();goalRing();go(home);}
   else if(ROLE==='sales'){document.getElementById('board').innerHTML='<div class="col"><div class="skel"></div><div class="skel"></div></div><div class="col"><div class="skel"></div></div><div class="col"><div class="skel"></div><div class="skel"></div></div>';}
