@@ -333,7 +333,7 @@ body.printing #app,body.printing #login,body.printing #toast,body.printing #seas
 
 <script>
 /* ============ CONFIG + STATE ============ */
-const APP_VERSION = "v11 · 11 Aug 2026";
+const APP_VERSION = "v12 · 12 Aug 2026";
 const SUPABASE_URL = "https://qxjlgfqvqhtrbttcgysw.supabase.co";
 const SUPABASE_KEY = "sb_publishable_FOeLR9B2zA6pRow0dcDqCw_2bHgiVar";
 const STATUSES = ["To Contact","Contacted","Meeting","Proposal","Pilot","Won","Dead"];
@@ -403,7 +403,7 @@ async function boot(){
   if(ROLE!=='sales'&&ROLE!=='curator')document.querySelectorAll('.curatoronly').forEach(e=>e.classList.add('hidden'));
   document.querySelectorAll('.owneronly').forEach(e=>e.classList.toggle('hidden',ROLE==='curator'));
   document.getElementById('who').textContent=MEMBERS[email].name+(ROLE==='sales'?'':' · '+ROLE);
-  const home=ROLE==='curator'?'titles':(ROLE==='viewer'?'owner':(MEMBERS[email].name==='Shereen'?'titles':'board'));
+  const home=ROLE==='viewer'?'owner':'board';
   const cached=loadCacheInto();
   if(cached){fillCatFilter();seasonBanner();goalRing();go(home);}
   else if(ROLE==='sales'){document.getElementById('board').innerHTML='<div class="col"><div class="skel"></div><div class="skel"></div></div><div class="col"><div class="skel"></div></div><div class="col"><div class="skel"></div><div class="skel"></div></div>';}
@@ -440,7 +440,10 @@ function subscribeRealtime(){
       const key=map[p.table]; if(!key&&p.table!=='b2b_reports')return;
       if(key){
         const arr={ACC,TOUCH,LISTS,OPENS,RQ}[key];
-        if(p.eventType==='DELETE'){const id=p.old&&p.old.id;if(id!=null){const i=arr.findIndex(x=>x.id===id);if(i>-1)arr.splice(i,1);}}
+        if(p.eventType==='DELETE'){const id=p.old&&p.old.id;
+          if(id!=null){const i=arr.findIndex(x=>x.id===id);if(i>-1)arr.splice(i,1);
+            /* if someone deleted the record we have open, close it rather than let edits go nowhere */
+            if(key==='ACC'&&CUR&&CUR.id===id){closeDossier();toast('That account was just deleted by someone else');}}}
         else{const row=p.new;const i=arr.findIndex(x=>x.id===row.id);
           if(i>-1)Object.assign(arr[i],row);else arr.unshift(row);
           if(key==='ACC'&&CUR&&CUR.id===row.id)Object.assign(CUR,row);}
@@ -543,12 +546,14 @@ function seasonBanner(){const s=seasonInfo();
   document.getElementById('season').textContent=s.map(x=>x.txt).join('  ·  ')||'No seasonal window active';}
 function seasonBoost(a){let b=0,why=[];seasonInfo().forEach(s=>{if(s.re.test(a.category||'')){b+=s.boost;why.push(s.txt.split(':')[0]);}});return {b,why};}
 function goalRing(){
+  const goal=Math.max(1,targets().weekly_touches||10);
   const wk=TOUCH.filter(t=>(Date.now()-new Date(t.at))<7*864e5&&t.kind!=='status').length;
-  const pct=Math.min(1,wk/10),r=9,c=2*Math.PI*r;
+  const pct=Math.min(1,wk/goal),r=9,c=2*Math.PI*r;
+  const el0=document.getElementById('goal');if(el0)el0.title='Touches this week vs your goal of '+goal;
   document.getElementById('goal').innerHTML=
    `<svg width="26" height="26"><circle cx="13" cy="13" r="${r}" fill="none" stroke="var(--line2)" stroke-width="3"/>
     <circle cx="13" cy="13" r="${r}" fill="none" stroke="${pct>=1?'var(--ok)':'var(--teal2)'}" stroke-width="3" stroke-linecap="round" stroke-dasharray="${c*pct} ${c}"/></svg>
-    <span class="lbl">${wk}/10</span>`;}
+    <span class="lbl">${wk}/${goal}</span>`;}
 
 /* ============ NAV ============ */
 function go(v){
@@ -572,12 +577,14 @@ function openMore(){
 /* ============ BOARD ============ */
 function filtered(){const q=(document.getElementById('q').value||'').toLowerCase(),c=fcat.value,ms=fscore.value;
   return active().filter(a=>(!c||a.category===c)&&(!ms||(a.score||0)>=+ms)&&(!q||(a.name+' '+(a.hook||'')+' '+(a.notes||'')).toLowerCase().includes(q)));}
-let LASTMAP=null, LASTMAP_N=-1;
+let LASTMAP=null, LASTMAP_K='';
 function touchMap(){
-  if(LASTMAP&&LASTMAP_N===TOUCH.length)return LASTMAP;
+  /* key on length AND the newest timestamp so an edited/replaced touch busts the cache */
+  const k=TOUCH.length+'|'+(TOUCH[0]?TOUCH[0].at:'');
+  if(LASTMAP&&LASTMAP_K===k)return LASTMAP;
   const m=new Map();
   for(const t of TOUCH){const p=m.get(t.account_id),v=+new Date(t.at);if(!p||v>p)m.set(t.account_id,v);}
-  LASTMAP=m;LASTMAP_N=TOUCH.length;return m;}
+  LASTMAP=m;LASTMAP_K=k;return m;}
 function lastAct(a){const t=touchMap().get(a.id)||0;
   return Math.max(t, a.updated_at?+new Date(a.updated_at):0);}
 function rotDays(a){const th=ROT_DAYS[a.status];if(!th)return 0;
@@ -621,11 +628,13 @@ async function dropCard(status){
 async function changeStatus(a,status){
   if(!canEdit()||!a)return;
   if(['Won','Dead'].includes(status)&&a.status!==status){askCloseReason(a,status);return;}
-  const prev=a.status;a.status=status;rerender();  /* optimistic */
-  const {error}=await sb.from('b2b_accounts').update({status,updated_by:by()}).eq('id',a.id);
-  if(error){a.status=prev;rerender();toast('Failed: '+error.message);return;}
-  sb.from('b2b_touches').insert({account_id:a.id,kind:'status',detail:'Moved to '+status,by_user:by()}).then(()=>{});
-  saveCache();toast('→ '+status);
+  const prev=a.status;
+  const ok=await safeWrite('b2b_accounts','update',{status,updated_by:by()},a.id,
+    ()=>{a.status=status;rerender();},
+    ()=>{a.status=prev;rerender();});
+  if(!ok)return;
+  await safeWrite('b2b_touches','insert',{account_id:a.id,kind:'status',detail:'Moved to '+status,by_user:by()});
+  toast('→ '+status);
   if(!['Won','Dead','Declined'].includes(status))askNext(a);}
 function askNext(a){
   if(!canEdit())return;
@@ -649,25 +658,25 @@ async function saveNext(id,date){
   const a=ACC.find(x=>x.id===id);if(!a)return;
   const na=document.getElementById('nxA')?document.getElementById('nxA').value:a.next_action;
   const rc=document.getElementById('nxR')?document.getElementById('nxR').value:(a.recur||'');
-  const prev={d:a.next_action_date,n:a.next_action,r:a.recur};a.next_action_date=date;a.next_action=na;a.recur=rc;
-  document.getElementById('modal').classList.add('hidden');rerender();
-  const {error}=await sb.from('b2b_accounts').update({next_action:na,next_action_date:date,recur:rc,updated_by:by()}).eq('id',id);
-  if(error){a.next_action_date=prev.d;a.next_action=prev.n;a.recur=prev.r;rerender();toast('Failed: '+error.message);return;}
-  saveCache();toast('Scheduled '+date+(rc?' · repeats '+rc:''));}
+  const prev={d:a.next_action_date,n:a.next_action,r:a.recur};
+  document.getElementById('modal').classList.add('hidden');
+  const ok=await safeWrite('b2b_accounts','update',{next_action:na,next_action_date:date,recur:rc,updated_by:by()},id,
+    ()=>{a.next_action_date=date;a.next_action=na;a.recur=rc;rerender();},
+    ()=>{a.next_action_date=prev.d;a.next_action=prev.n;a.recur=prev.r;rerender();});
+  if(ok)toast('Scheduled '+date+(rc?' · repeats '+rc:''));}
 async function doneAction(id){
   const a=ACC.find(x=>x.id===id);if(!a||!canEdit())return;
   sb.from('b2b_touches').insert({account_id:id,kind:'note',detail:'Done: '+(a.next_action||'follow-up'),by_user:by()}).then(()=>{});
+  const prev=a.next_action_date;
   if(a.recur&&RECUR_DAYS[a.recur]){
     const d=new Date();d.setDate(d.getDate()+RECUR_DAYS[a.recur]);const nd=d.toISOString().slice(0,10);
-    const prev=a.next_action_date;a.next_action_date=nd;rerender();
-    const {error}=await sb.from('b2b_accounts').update({next_action_date:nd,updated_by:by()}).eq('id',id);
-    if(error){a.next_action_date=prev;rerender();toast('Failed');return;}
-    saveCache();toast('Done · repeats '+a.recur+', next '+nd);goalRing();
+    const ok=await safeWrite('b2b_accounts','update',{next_action_date:nd,updated_by:by()},id,
+      ()=>{a.next_action_date=nd;rerender();},()=>{a.next_action_date=prev;rerender();});
+    if(ok){toast('Done · repeats '+a.recur+', next '+nd);goalRing();}
   }else{
-    const prev=a.next_action_date;a.next_action_date=null;rerender();
-    const {error}=await sb.from('b2b_accounts').update({next_action_date:null,updated_by:by()}).eq('id',id);
-    if(error){a.next_action_date=prev;rerender();toast('Failed: '+error.message);return;}
-    saveCache();goalRing();askNext(a);
+    const ok=await safeWrite('b2b_accounts','update',{next_action_date:null,updated_by:by()},id,
+      ()=>{a.next_action_date=null;rerender();},()=>{a.next_action_date=prev;rerender();});
+    if(ok){goalRing();askNext(a);}
   }}
 
 /* ============ TODAY ============ */
@@ -675,9 +684,11 @@ async function snooze(id,days){
   if(!canEdit())return;
   const a=ACC.find(x=>x.id===id);if(!a)return;
   const d=new Date();d.setDate(d.getDate()+days);const nd=d.toISOString().slice(0,10);
-  const prev=a.next_action_date;a.next_action_date=nd;rerender();
-  const {error}=await sb.from('b2b_accounts').update({next_action_date:nd,updated_by:by()}).eq('id',id);
-  if(error){a.next_action_date=prev;rerender();toast('Failed');}else{saveCache();toast('Snoozed to '+nd);}}
+  const prev=a.next_action_date;
+  const ok=await safeWrite('b2b_accounts','update',{next_action_date:nd,updated_by:by()},id,
+    ()=>{a.next_action_date=nd;rerender();},
+    ()=>{a.next_action_date=prev;rerender();});
+  if(ok)toast('Snoozed to '+nd);}
 function renderToday(){
   const el=document.getElementById('v-today');const A=active();const td=today();
   const overdue=A.filter(a=>a.next_action_date&&a.next_action_date<td&&!['Won','Dead'].includes(a.status));
@@ -719,10 +730,10 @@ function renderTitles(){
       <button class="btn small primary" onclick="openCatalog(${l.id})">Catalog</button>
       <button class="btn small" onclick="copyListText(${l.id})">Text</button>
       <button class="btn small" onclick="copyShare(${l.id})">Share</button>
-      <button class="btn small danger" onclick="delList(${l.id})">Delete</button></div>`;}).join('');
+      ${canEdit()?`<button class="btn small danger" onclick="delList(${l.id})">Delete</button>`:''}</div>`;}).join('');
   el.innerHTML=`<h2 class="display" style="color:var(--teal);margin-bottom:8px">Curated title lists</h2>
-    <p style="color:var(--ink2);font-size:12px;margin-bottom:12px">Shereen uploads the client's curated Excel here. Ahmad downloads it next to the client's name, or opens the branded catalog to print/PDF it with covers.</p>
-    <div class="sect"><h3>Upload a new list</h3>
+    <p style="color:var(--ink2);font-size:12px;margin-bottom:12px">${canEdit()?'Upload a client\'s curated Excel here. It appears next to their name, ready to download or open as a branded catalog.':'Curated selections per client. You can view and print any catalog.'}</p>
+    ${!canEdit()?'':`<div class="sect"><h3>Upload a new list</h3>
       <div class="grid2">
         <div class="field"><label>Client account</label><select id="upAcc">${accOpts}</select></div>
         <div class="field"><label>List name</label><input id="upName" placeholder="e.g. Kids Arabic bestsellers for Fairmont"></div></div>
@@ -730,14 +741,14 @@ function renderTitles(){
       <div class="field" style="margin-top:8px"><label>Excel or CSV file</label><input id="upFile" type="file" accept=".xlsx,.xls,.csv"></div>
       <div class="copyrow"><button class="btn primary" onclick="uploadList()">Upload list</button>
       <span id="upMsg" style="font-size:12px;color:var(--ink2);align-self:center"></span></div>
-      <p style="font-size:11px;color:var(--ink2);margin-top:8px">Any columns work. Best catalog results with: Title, Author, ISBN, Price. Arabic headers are fine (العنوان، المؤلف، السعر).</p></div>
+      <p style="font-size:11px;color:var(--ink2);margin-top:8px">Any columns work. Best catalog results with: Title, Author, ISBN, Price. Arabic headers are fine (العنوان، المؤلف، السعر).</p></div>`}
     <h3 style="margin:14px 0 4px">All lists (${LISTS.length})</h3>
     ${rows||'<div class="empty"><div class="big">▤</div>No lists yet. Upload the first curated Excel above.</div>'}`;}
 const HDR_MAP=[[/^(title|book|name|العنوان|الكتاب|الاسم)/i,'title'],[/^(author|writer|المؤلف|الكاتب)/i,'author'],[/isbn|ردمك/i,'isbn'],[/price|سعر|jod|دينار/i,'price'],[/lang|لغة/i,'language'],[/categ|genre|تصنيف|فئة/i,'category'],[/note|ملاحظ/i,'note']];
 function mapHeader(h){for(const [re,k] of HDR_MAP)if(re.test(String(h).trim()))return k;return null;}
 let UPBUSY=false;
 async function uploadList(){
-  if(UPBUSY)return;
+  if(UPBUSY||!canEdit())return;
   const f=document.getElementById('upFile').files[0];
   const name=document.getElementById('upName').value.trim();
   const msg=document.getElementById('upMsg');
@@ -774,7 +785,8 @@ async function downloadList(id){const l=LISTS.find(x=>x.id===id);if(!l||!l.file_
   const {data,error}=await sb.storage.from('b2b-files').createSignedUrl(l.file_path,3600);
   if(error||!data){if(w)w.close();toast('Download error: '+(error?error.message:'no file'));return;}
   if(w)w.location=data.signedUrl;else window.location=data.signedUrl;}
-async function delList(id){if(!confirm('Delete this list? The Excel file is removed too.'))return;
+async function delList(id){if(!canEdit())return;
+  if(!confirm('Delete this list? The Excel file is removed too.'))return;
   const l=LISTS.find(x=>x.id===id);
   const {error}=await sb.from('b2b_lists').delete().eq('id',id);
   if(error){toast('Not deleted: '+error.message);return;}
@@ -866,7 +878,7 @@ function renderAnalytics(){
   const mk=(id,cfg)=>{charts[id]&&charts[id].destroy();charts[id]=new Chart(document.getElementById(id),cfg);};
   mk('cFunnel',{type:'bar',data:{labels:STATUSES,datasets:[{data:STATUSES.map(s=>cnt[s]),backgroundColor:['#9C948A','#C4841B','#F6891F','#F16725','#B05C3B','#2F7D4F','#B3403A'],borderRadius:5}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}}});
   mk('cWin',{type:'bar',data:{labels:Object.keys(closedCats),datasets:[{label:'Won',data:Object.values(closedCats).map(x=>x.w),backgroundColor:'#2F7D4F',borderRadius:5},{label:'Dead',data:Object.values(closedCats).map(x=>x.d),backgroundColor:'#B3403A',borderRadius:5}]},options:{scales:{x:{stacked:true},y:{stacked:true,ticks:{precision:0}}}}});
-  mk('cAct',{type:'line',data:{labels:weeks.map(w=>(w.getMonth()+1)+'/'+w.getDate()),datasets:[{label:'Touches',data:wk,borderColor:'#F6891F',backgroundColor:'#F6891F22',fill:true,tension:.35},{label:'Target 10/wk',data:wk.map(()=>10),borderColor:'#056A78',borderDash:[6,4],pointRadius:0}]},options:{scales:{y:{beginAtZero:true,ticks:{precision:0}}}}});
+  mk('cAct',{type:'line',data:{labels:weeks.map(w=>(w.getMonth()+1)+'/'+w.getDate()),datasets:[{label:'Touches',data:wk,borderColor:'#F6891F',backgroundColor:'#F6891F22',fill:true,tension:.35},{label:'Goal '+(targets().weekly_touches||10)+'/wk',data:wk.map(()=>targets().weekly_touches||10),borderColor:'#056A78',borderDash:[6,4],pointRadius:0}]},options:{scales:{y:{beginAtZero:true,ticks:{precision:0}}}}});
   mk('cCat',{type:'doughnut',data:{labels:topCats.map(x=>x[0]),datasets:[{data:topCats.map(x=>x[1]),backgroundColor:['#F6891F','#F16725','#056A78','#A8894C','#B05C3B','#9C948A','#FFB067','#c9b88a']}]},options:{plugins:{legend:{position:'right'}},cutout:'58%'}});
   const T=SETTINGS.kpi_targets||{};
   document.getElementById('kpiTargets').innerHTML='<table style="width:100%;font-size:12px;border-collapse:collapse">'+Object.entries(T).map(([k,v])=>{
@@ -911,6 +923,7 @@ function mdToHtml(src){
   closeLists();return out.join('');}
 async function renderReports(){
   const el=document.getElementById('v-reports');
+  const keep=(document.getElementById('repPick')||{}).value;   /* keep what the reader is reading */
   const {data,error}=await sb.from('b2b_reports').select('*').order('run_date',{ascending:false}).limit(12);
   if(error){el.innerHTML='<div class="empty">Could not load reports: '+esc(error.message)+'</div>';return;}
   if(!data||!data.length){el.innerHTML='<div class="empty"><div class="big">📡</div>No radar reports yet. The Monday automation posts here after each run.</div>';return;}
@@ -919,7 +932,10 @@ async function renderReports(){
     <button class="btn" onclick="window.print()">Print / PDF</button>
     <button class="btn" onclick="copyReport()">Copy text</button></div>
     <div class="report" id="repBody"></div>`;
-  REPORTS=data;showReport();}
+  REPORTS=data;
+  const pick=document.getElementById('repPick');
+  if(keep!==undefined&&pick&&pick.options[+keep])pick.value=keep;
+  showReport();}
 let REPORTS=[];
 function showReport(){
   const i=+((document.getElementById('repPick')||{}).value||0),r=REPORTS[i];if(!r)return;
@@ -1003,7 +1019,7 @@ function openDossier(id,tab){
     ${a.area?`<a class="btn small" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(a.name+' '+a.area+' Amman Jordan')}">Map</a>`:''}</div>
   <h2 class="display">${esc(a.name)}</h2>
   <div style="color:var(--ink2);font-size:12px">${esc(a.category||'')} · ${esc(a.area||'')} · Score ${a.score??'?'} ${a.verified===false?'· <b style="color:var(--rust)">UNVERIFIED</b>':''} ${a.status==='Declined'?'· <b style="color:var(--bad)">DECLINED: '+esc(a.declined_reason||'')+'</b>':''}</div>
-  ${ro?'<p style="font-size:11px;color:var(--gold);margin-top:6px">Curation view: you can see everything and manage title lists; pipeline editing stays with Ahmad.</p>':''}
+  ${ro?'<p style="font-size:11px;color:var(--gold);margin-top:6px">Read-only view. You can see everything and print any document; editing is done by the sales team.</p>':''}
   ${!ro&&a.status!=='Declined'?`<div class="statusrow">${STATUSES.map(s=>`<button class="${a.status===s?'on':''}" onclick="statusFromDossier('${s}')">${s}</button>`).join('')}
     <button style="color:var(--bad);border-color:var(--bad)" onclick="openDeclineModal()">Decline...</button></div>`:''}
   ${!ro&&a.status==='Declined'?`<div class="copyrow"><button class="btn primary" onclick="restoreAcc(${a.id});closeDossier()">Restore to board</button></div>`:''}
@@ -1076,10 +1092,9 @@ async function saveFields(){
   if(!canEdit()||!CUR)return;
   const u={};['contact_person','phone','email','instagram','next_action','next_action_date','est_value_jod','decision_maker','notes','recur','area'].forEach(k=>{const el=document.getElementById('f_'+k);if(el)u[k]=el.value||null;});
   if(u.est_value_jod==='')u.est_value_jod=null;if(u.next_action_date==='')u.next_action_date=null;if(u.recur===null)u.recur='';
-  /* a human typing a value makes it confirmed; clearing it drops the flag */
-  if(u.est_value_jod!=null&&String(u.est_value_jod)!==String(CUR.est_value_jod??''))u.value_source='confirmed';
-  else if(u.est_value_jod!=null&&CUR.value_source==='confirmed')u.value_source='confirmed';
-  else if(u.est_value_jod==null)u.value_source='';
+  /* saving the form IS the human confirmation: any value present becomes confirmed,
+     including agreeing with the agent's guess unchanged. Clearing it drops the flag. */
+  u.value_source = (u.est_value_jod!=null && String(u.est_value_jod).trim()!=='') ? 'confirmed' : '';
   u.updated_by=by();
   const id=CUR.id;
   Object.assign(CUR,u);  /* optimistic */
@@ -1096,6 +1111,9 @@ async function logTouch(kind){
   const row={account_id:a.id,kind,detail,by_user:by()};
   if(!navigator.onLine){
     queueWrite({table:'b2b_touches',type:'insert',payload:row});
+    if(['call','whatsapp','email'].includes(kind)&&!a.outreach_date){
+      a.outreach_date=today();
+      queueWrite({table:'b2b_accounts',type:'update',payload:{outreach_date:today(),updated_by:by()},id:a.id});}
     TOUCH.unshift(Object.assign({id:'local-'+Date.now(),at:new Date().toISOString()},row));
     const l0=document.getElementById('touchList');
     if(l0){const d0=document.createElement('div');d0.className='touch';
@@ -1109,9 +1127,8 @@ async function logTouch(kind){
     if(el)el.value='';toast('Logged offline, will sync');return;}
   if(error){toast('Error: '+error.message);return;}
   if(data&&data[0]&&!TOUCH.some(t=>t.id===data[0].id))TOUCH.unshift(data[0]);
-  if(['call','whatsapp','email'].includes(kind)&&!a.outreach_date){
-    a.outreach_date=today();
-    sb.from('b2b_accounts').update({outreach_date:today(),updated_by:by()}).eq('id',a.id).then(()=>{});}
+  if(['call','whatsapp','email'].includes(kind)&&!a.outreach_date)
+    await safeWrite('b2b_accounts','update',{outreach_date:today(),updated_by:by()},a.id,()=>{a.outreach_date=today();});
   /* append without destroying unsaved edits in the dossier */
   const list=document.getElementById('touchList');
   if(list){const d=document.createElement('div');d.className='touch';
@@ -1203,22 +1220,32 @@ function queueWrite(op){const q=outbox();q.push(Object.assign({qid:(crypto.rando
 async function online(){
   if(!navigator.onLine)return false;
   try{const r=await fetch(SUPABASE_URL+'/auth/v1/health',{cache:'no-store'});return r.ok||r.status<500;}catch(e){return false;}}
+const netErr=m=>/fetch|network|Failed to fetch|timeout|offline/i.test(String(m||''));
 async function flushOutbox(){
-  const q=outbox();if(!q.length)return {sent:0,left:0};
-  if(!await online())return {sent:0,left:q.length};
-  let sent=0;const left=[];
+  const q=outbox();if(!q.length)return {sent:0,left:0,dropped:0};
+  if(!await online())return {sent:0,left:q.length,dropped:0};
+  let sent=0,dropped=0;const left=[],problems=[];
   for(const op of q){
+    op.tries=(op.tries||0)+1;
     try{
       let res;
-      if(op.type==='update')res=await sb.from(op.table).update(op.payload).eq('id',op.id);
-      else if(op.type==='insert')res=await sb.from(op.table).insert(op.payload);
-      else continue;
-      if(res.error){left.push(op);}else sent++;
-    }catch(e){left.push(op);}}
+      if(op.type==='update')res=await sb.from(op.table).update(op.payload).eq('id',op.id).select('id');
+      else if(op.type==='insert')res=await sb.from(op.table).insert(op.payload).select('id');
+      else {dropped++;continue;}
+      if(res.error){
+        /* a rejection that is not a network problem will never succeed: drop it and say so */
+        if(!netErr(res.error.message)){dropped++;problems.push(op.table+': '+res.error.message);}
+        else if(op.tries>=5){dropped++;problems.push(op.table+': gave up after 5 tries');}
+        else left.push(op);
+      } else if(op.type==='update'&&(!res.data||!res.data.length)){
+        dropped++;problems.push('an edit could not be applied, that record no longer exists');
+      } else sent++;
+    }catch(e){ if(op.tries>=5){dropped++;problems.push(op.table+': '+e.message);} else left.push(op); }}
   outboxSave(left);updateNetBadge();
   if(sent)toast('Synced '+sent+' offline change'+(sent>1?'s':''));
-  if(sent)await loadAll(),rerender();
-  return {sent,left:left.length};}
+  if(dropped)toast(dropped+' offline change'+(dropped>1?'s':'')+' could not be saved: '+(problems[0]||''));
+  if(sent||dropped){await loadAll();rerender();}
+  return {sent,left:left.length,dropped};}
 function updateNetBadge(){
   const n=outbox().length,el=document.getElementById('netBadge');if(!el)return;
   const off=!navigator.onLine;
@@ -1226,15 +1253,23 @@ function updateNetBadge(){
   el.textContent=off?(n?('Offline · '+n+' queued'):'Offline'):(n?(n+' queued'):'');
   el.style.background=off?'var(--badbg)':'var(--warnbg)';
   el.style.color=off?'var(--bad)':'var(--warn)';}
-/* wrap a write so it survives a dead network */
+/* Every pipeline write goes through here so it survives a dead network the same way.
+   Returns true if the change is safe (saved or queued), false if it was rolled back. */
 async function safeWrite(table,type,payload,id,localApply,rollback){
   if(localApply)localApply();
-  if(!navigator.onLine){queueWrite({table,type,payload,id});toast('Saved offline, will sync');return true;}
-  const res=type==='update'?await sb.from(table).update(payload).eq('id',id):await sb.from(table).insert(payload);
+  if(!navigator.onLine){queueWrite({table,type,payload,id});saveCache();toast('Saved offline, will sync');return true;}
+  let res;
+  try{
+    res = type==='update'
+      ? await sb.from(table).update(payload).eq('id',id).select('id')
+      : await sb.from(table).insert(payload).select('id');
+  }catch(e){ res={error:{message:String(e.message||e)}}; }
   if(res.error){
-    if(/fetch|network|Failed/i.test(res.error.message||'')){queueWrite({table,type,payload,id});toast('Saved offline, will sync');return true;}
+    if(netErr(res.error.message)){queueWrite({table,type,payload,id});saveCache();toast('Saved offline, will sync');return true;}
     if(rollback)rollback();toast('Failed: '+res.error.message);return false;}
-  return true;}
+  if(type==='update'&&(!res.data||!res.data.length)){
+    if(rollback)rollback();toast('That account no longer exists');await loadAll();rerender();return false;}
+  saveCache();return true;}
 
 /* ============ v9: FREE ROUTE OPTIMIZER ============ */
 /* Geocode once via Nominatim (1 req/sec, results cached in the DB as the policy requires),
@@ -1277,6 +1312,9 @@ async function geocodeMissing(ids){
 async function optimizeRoute(){
   const ids=[...document.querySelectorAll('.rtChk:checked')].map(c=>+c.value);
   if(ids.length<3){toast('Pick at least 3 stops to optimise');return;}
+  if(ids.length>20){toast('Pick 20 stops or fewer, a day of visits is not more than that');return;}
+  const need=ids.map(i=>ACC.find(a=>a.id===i)).filter(a=>a&&(a.lat==null||a.lng==null)).length;
+  if(need>6&&!confirm(need+' of these have never been located on a map. Looking them up takes about '+Math.ceil(need*1.2)+' seconds. Continue?'))return;
   const g=await geocodeMissing(ids);
   const pts=ids.map(i=>ACC.find(a=>a.id===i)).filter(a=>a&&a.lat!=null);
   if(pts.length<3){document.getElementById('rtOut').innerHTML=`<div class="gen">Could not place enough of these on the map (${g.failed} not found). Amman addresses are often landmark-based; open each account and set its area, or use the plain route below.</div>`;return;}
@@ -1328,17 +1366,21 @@ async function findOSM(){
         <span style="font-size:11px;color:var(--ink2)">${esc([x.area,x.phone,x.web].filter(Boolean).join(' · '))||'no contact details in OSM'}</span></div>
         ${canEdit()?`<button class="btn small primary" onclick="addOSM(${i})">Add to pipeline</button>`:''}</div>`).join('');
   }catch(e){out.innerHTML='<div class="gen">OpenStreetMap did not respond. Try again in a minute.</div>';}}
-let OSMFOUND=[];
+let OSMFOUND=[], OSMBUSY=false;
 async function addOSM(i){
-  if(!canEdit())return;const x=OSMFOUND[i];if(!x)return;
+  if(!canEdit()||OSMBUSY)return;const x=OSMFOUND[i];if(!x)return;
+  if(ACC.some(a=>normName(a.name)===normName(x.name))){toast('Already in the pipeline');return;}
+  OSMBUSY=true;
+  try{
   const type=document.getElementById('osmType').value;
   const {error}=await sb.from('b2b_accounts').insert({name:x.name,category:type,area:x.area||'Other',
     phone:x.phone||'',instagram:x.ig||'',source:x.web||'OpenStreetMap',
     hook:'Found via OpenStreetMap ('+type+' in Amman). Verify before outreach.',
     status:'To Contact',verified:false,date_added:today(),updated_by:by(),run:-1,
     lat:x.lat,lng:x.lng,geo_at:new Date().toISOString()});
-  if(error){toast(error.message);return;}
-  toast('Added '+x.name);await loadAll();findOSM();}
+    if(error){toast(error.message);return;}
+    toast('Added '+x.name);await loadAll();await findOSM();
+  }finally{OSMBUSY=false;}}
 
 /* ============ NEW v8 FUNCTIONS ============ */
 
@@ -1348,7 +1390,9 @@ function askCloseReason(a,status){
   m.innerHTML=`<div class="box"><h3>${status==='Won'?'Won':'Closed'}: ${esc(a.name)}</h3>
    <p style="font-size:12px;color:var(--ink2);margin-bottom:10px">${status==='Won'?'What kind of deal was it? This teaches the radar what converts.':'Why did it not go ahead? Honest answers make next quarter better.'}</p>
    <div class="field"><label>Reason</label><select id="clR">${CLOSE_REASONS[status].map(r=>`<option>${esc(r)}</option>`).join('')}</select></div>
-   ${status==='Won'?`<div class="field" style="margin-top:8px"><label>Deal value (JOD/year, optional)</label><input id="clV" type="number" value="${a.est_value_jod||''}"></div>`:''}
+   ${status==='Won'?`<div class="field" style="margin-top:8px"><label>Confirmed deal value (JOD/year)${a.est_value_jod&&!isConfirmed(a)?' <span class="pill amber">agent guess below, correct it</span>':''}</label>
+     <input id="clV" type="number" value="${isConfirmed(a)?(a.est_value_jod||''):''}" placeholder="${a.est_value_jod&&!isConfirmed(a)?('agent guessed '+a.est_value_jod+', type the real figure'):'leave empty if not known yet'}">
+     <div style="font-size:11px;color:var(--ink2);margin-top:3px">Only type a figure you actually agreed. Leaving it empty keeps the account unpriced rather than guessing.</div></div>`:''}
    <div class="field" style="margin-top:8px"><label>Note (optional)</label><textarea id="clN" rows="2"></textarea></div>
    <div class="copyrow"><button class="btn primary" onclick="confirmClose(${a.id},'${status}')">Save</button>
    <button class="btn" onclick="document.getElementById('modal').classList.add('hidden')">Cancel</button></div></div>`;}
@@ -1356,9 +1400,10 @@ async function confirmClose(id,status){
   const a=ACC.find(x=>x.id===id);if(!a)return;
   const reason=document.getElementById('clR').value,note=document.getElementById('clN').value;
   const vEl=document.getElementById('clV');
-  const prev={s:a.status,r:a.close_reason,v:a.est_value_jod};
+  const prev={s:a.status,r:a.close_reason,v:a.est_value_jod,vs:a.value_source||'',ca:a.closed_at||null};
   const u={status,close_reason:reason,close_note:note,closed_at:new Date().toISOString(),updated_by:by()};
-  if(vEl&&vEl.value){u.est_value_jod=+vEl.value;u.value_source='confirmed';}
+  /* only a figure typed here counts as confirmed; an untouched agent guess never gets promoted */
+  if(vEl&&vEl.value.trim()!==''){u.est_value_jod=+vEl.value;u.value_source='confirmed';}
   Object.assign(a,u);document.getElementById('modal').classList.add('hidden');rerender();
   const {error}=await sb.from('b2b_accounts').update(u).eq('id',id);
   if(error){Object.assign(a,prev);rerender();toast('Failed: '+error.message);return;}
@@ -1375,8 +1420,11 @@ function toastUndo(msg,fn){
 function runUndo(){if(UNDO){const f=UNDO;UNDO=null;document.getElementById('toast').style.opacity=0;f();}}
 async function revertStatus(id,prev){
   const a=ACC.find(x=>x.id===id);if(!a)return;
-  Object.assign(a,{status:prev.s,close_reason:prev.r,est_value_jod:prev.v});rerender();
-  await sb.from('b2b_accounts').update({status:prev.s,close_reason:prev.r,close_note:'',closed_at:null,est_value_jod:prev.v,updated_by:by()}).eq('id',id);
+  const back={status:prev.s,close_reason:prev.r,close_note:'',closed_at:prev.ca??null,
+              est_value_jod:prev.v??null,value_source:prev.vs??'',updated_by:by()};
+  Object.assign(a,back);rerender();
+  const {error}=await sb.from('b2b_accounts').update(back).eq('id',id).select('id');
+  if(error){toast('Undo failed: '+error.message);await loadAll();rerender();return;}
   saveCache();toast('Reverted');}
 
 /* F3. Forecast maths */
