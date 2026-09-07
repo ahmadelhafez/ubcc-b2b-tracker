@@ -333,7 +333,7 @@ body.printing #app,body.printing #login,body.printing #toast,body.printing #seas
 
 <script>
 /* ============ CONFIG + STATE ============ */
-const APP_VERSION = "v12 · 12 Aug 2026";
+const APP_VERSION = "v13 · 7 Sep 2026";
 const SUPABASE_URL = "https://qxjlgfqvqhtrbttcgysw.supabase.co";
 const SUPABASE_KEY = "sb_publishable_FOeLR9B2zA6pRow0dcDqCw_2bHgiVar";
 const STATUSES = ["To Contact","Contacted","Meeting","Proposal","Pilot","Won","Dead"];
@@ -616,9 +616,10 @@ function renderBoard(){
       (items.map(cardHTML).join('')||`<div class="empty" style="padding:18px 8px;font-size:12px">Empty</div>`);
     b.appendChild(col);});
   const inMotion=f.filter(a=>["Contacted","Meeting","Proposal","Pilot"].includes(a.status)).length;
-  const wt=f.reduce((s,a)=>s+(+a.est_value_jod||0)*STAGE_PROB[a.status],0);
+  const confRows=f.filter(isConfirmed);
+  const wt=confRows.reduce((s,a)=>s+(+a.est_value_jod||0)*STAGE_PROB[a.status],0);
   const rotting=f.filter(a=>rotDays(a)>0).length;
-  document.getElementById('boardKpis').innerHTML=kpi('Active',f.length)+kpi('In motion',inMotion)+kpi('Rotting',rotting)+kpi('Won',f.filter(a=>a.status==='Won').length)+kpi('Weighted JOD',Math.round(wt).toLocaleString())+kpi('Declined',declined().length);}
+  document.getElementById('boardKpis').innerHTML=kpi('Active',f.length)+kpi('In motion',inMotion)+kpi('Rotting',rotting)+kpi('Won',f.filter(a=>a.status==='Won').length)+kpi('Confirmed JOD',confRows.length?Math.round(wt).toLocaleString():'no data')+kpi('Declined',declined().length);}
 function dragStart(e,id){DRAG=id;e.dataTransfer.effectAllowed='move';setTimeout(()=>{const el=document.querySelector(`.card[data-id="${id}"]`);if(el)el.classList.add('dragging');},0);}
 function dragEnd(){document.querySelectorAll('.card.dragging').forEach(el=>el.classList.remove('dragging'));setTimeout(()=>DRAG=null,50);}
 async function dropCard(status){
@@ -870,9 +871,10 @@ function renderAnalytics(){
   const topCats=Object.entries(catCount).sort((a,b)=>b[1]-a[1]).slice(0,8);
   const weeks=[...Array(8)].map((_,i)=>{const d=new Date();d.setDate(d.getDate()-7*(7-i));return d;});
   const wk=weeks.map(w=>{const w2=new Date(w);w2.setDate(w2.getDate()+7);return TOUCH.filter(t=>{const x=new Date(t.at);return x>=w&&x<w2;}).length;});
-  const wt=A.reduce((s,a)=>s+(+a.est_value_jod||0)*STAGE_PROB[a.status],0);
+  const confRows=A.filter(isConfirmed);
+  const wt=confRows.reduce((s,a)=>s+(+a.est_value_jod||0)*STAGE_PROB[a.status],0);
   const resp=A.filter(a=>a.response&&a.response.trim()).length,sent=A.filter(a=>a.outreach_date&&String(a.outreach_date).trim()).length;
-  document.getElementById('anaKpis').innerHTML=kpi('Weighted JOD',Math.round(wt).toLocaleString())+kpi('Outreach sent',sent)+kpi('Responses',resp)+kpi('Response rate',sent?Math.round(resp/sent*100)+'%':'0%')+kpi('Meetings+',cnt['Meeting']+cnt['Proposal']+cnt['Pilot']+cnt['Won'])+kpi('Won / Dead / Declined',`${cnt['Won']} / ${cnt['Dead']} / ${declined().length}`);
+  document.getElementById('anaKpis').innerHTML=kpi('Confirmed JOD',confRows.length?Math.round(wt).toLocaleString():'no data')+kpi('Outreach sent',sent)+kpi('Responses',resp)+kpi('Response rate',sent?Math.round(resp/sent*100)+'%':'0%')+kpi('Meetings+',cnt['Meeting']+cnt['Proposal']+cnt['Pilot']+cnt['Won'])+kpi('Won / Dead / Declined',`${cnt['Won']} / ${cnt['Dead']} / ${declined().length}`);
   const ink2=getComputedStyle(document.documentElement).getPropertyValue('--ink2');
   Chart.defaults.color=ink2;Chart.defaults.font.family="'IBM Plex Sans',sans-serif";
   const mk=(id,cfg)=>{charts[id]&&charts[id].destroy();charts[id]=new Chart(document.getElementById(id),cfg);};
@@ -1618,7 +1620,7 @@ function buildProposal(id){
   const a=ACC.find(x=>x.id===id);if(!a)return;
   const lists=LISTS.filter(l=>l.account_id===id);
   const v=segVal(a.category);
-  const val=+a.est_value_jod||0;
+  const val=isConfirmed(a)?(+a.est_value_jod||0):0; // never print an agent estimate in a client document
   const body=`
    <h2 class="display" style="color:var(--teal)">1. What we understand</h2>
    <p>${esc(a.hook||v.pain)}</p>
@@ -1666,7 +1668,7 @@ function buildQBR(id){
   const lists=LISTS.filter(l=>l.account_id===id);
   const body=`
    <h2 class="display" style="color:var(--teal)">Where we are</h2>
-   <p>Partnership status: <b>${esc(a.status)}</b>${a.deal_model?(' · '+esc(a.deal_model)):''}${a.est_value_jod?(' · JOD '+(+a.est_value_jod).toLocaleString()+' per year'):''}.</p>
+   <p>Partnership status: <b>${esc(a.status)}</b>${a.deal_model?(' · '+esc(a.deal_model)):''}${(a.est_value_jod&&isConfirmed(a))?(' · JOD '+(+a.est_value_jod).toLocaleString()+' per year'):''}.</p>
    ${lists.length?`<p>Curated selections in place: ${lists.map(l=>esc(l.name)).join(', ')}.</p>`:''}
    <h2 class="display" style="color:var(--teal);margin-top:16px">What happened this period</h2>
    <ul style="margin-left:18px">${tl.map(t=>`<li>${esc(new Date(t.at).toLocaleDateString())} · ${esc(t.kind)}: ${esc(t.detail||'')}</li>`).join('')||'<li>No activity logged yet.</li>'}</ul>
