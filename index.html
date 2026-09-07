@@ -333,7 +333,7 @@ body.printing #app,body.printing #login,body.printing #toast,body.printing #seas
 
 <script>
 /* ============ CONFIG + STATE ============ */
-const APP_VERSION = "v13.2 · 7 Sep 2026";
+const APP_VERSION = "v14 · 7 Sep 2026";
 const SUPABASE_URL = "https://qxjlgfqvqhtrbttcgysw.supabase.co";
 const SUPABASE_KEY = "sb_publishable_FOeLR9B2zA6pRow0dcDqCw_2bHgiVar";
 const STATUSES = ["To Contact","Contacted","Meeting","Proposal","Pilot","Won","Dead"];
@@ -354,6 +354,7 @@ const MEMBERS = {
   'osama@legenda-b2b.app':{name:'Dr. Osama',role:'viewer'}};
 const CLOSE_REASONS = {Won:['Consignment shelf agreed','Wholesale order','Gifting/CSR deal','Event or pop-up','Library/institutional supply','Other'],
   Dead:['No budget','Timing, revisit later','Chose a competitor','No decision maker access','Wrong titles/fit','Unreachable','Other']};
+const CATEGORIES = ['Cafes & Coffee','Hotels & Tourism','Culture & Arts','Corporate & Banks','Retail & Lifestyle','Kids, Baby & Pharmacy','Professional & Design Firms','Corporate Gifting','NGOs & UN','Wellness & Health','Libraries & Learning','Language Centres','Other']; // enforced by a DB check; the old fine label lives in subcategory
 const AREAS = ['Abdoun','Sweifieh','Shmeisani','Jabal Amman','Weibdeh','Abdali','Khalda','Dabouq','Deir Ghbar','Mecca St','Gardens','Downtown','Airport Road','Amman','Zarqa','Irbid','Dead Sea','Aqaba','Petra','Madaba','Other']; // 'Amman' = city known, district not yet
 const active   = () => ACC.filter(a=>a.status!=='Declined');
 const declined = () => ACC.filter(a=>a.status==='Declined');
@@ -537,7 +538,7 @@ function startIdleWatch(){const reset=()=>{clearTimeout(IDLE_T);IDLE_T=setTimeou
 function seasonInfo(){
   const now=new Date(),m=now.getMonth()+1,out=[];
   const dA=Math.ceil((new Date('2026-09-24')-now)/864e5);
-  if(dA>0&&dA<120)out.push({txt:`Amman Book Fair in ${dA} days`,re:/mall|museum|culture|library|institution/i,boost:1});
+  if(dA>0&&dA<120)out.push({txt:`Amman Book Fair in ${dA} days`,re:/retail|culture|librar|learning|language/i,boost:1});
   if(m>=10||m<=1)out.push({txt:'GIFTING WINDOW: corporate Ramadan + year-end decisions happen now',re:/csr|gift|corporate|bank|insurance|telecom|hr/i,boost:2});
   const dR=Math.ceil((new Date('2027-02-08')-now)/864e5);
   if(dR>0&&dR<190)out.push({txt:`Ramadan 2027 in ${dR} days`,re:/csr|gift|corporate/i,boost:1});
@@ -1021,7 +1022,7 @@ function openDossier(id,tab){
     ${!ro?`<button class="btn small" onclick="downloadICS(${a.id})">Add to calendar</button>`:''}
     ${a.area?`<a class="btn small" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(a.name+' '+a.area+' Amman Jordan')}">Map</a>`:''}</div>
   <h2 class="display">${esc(a.name)}</h2>
-  <div style="color:var(--ink2);font-size:12px">${esc(a.category||'')} · ${esc(a.area||'')} · Score ${a.score??'?'} ${a.verified===false?'· <b style="color:var(--rust)">UNVERIFIED</b>':''} ${a.status==='Declined'?'· <b style="color:var(--bad)">DECLINED: '+esc(a.declined_reason||'')+'</b>':''}</div>
+  <div style="color:var(--ink2);font-size:12px">${esc(a.category||'')}${a.subcategory?' ('+esc(a.subcategory)+')':''} · ${esc(a.area||'')} · Score ${a.score??'?'} ${a.verified===false?'· <b style="color:var(--rust)">UNVERIFIED</b>':''} ${a.status==='Declined'?'· <b style="color:var(--bad)">DECLINED: '+esc(a.declined_reason||'')+'</b>':''}</div>
   ${ro?'<p style="font-size:11px;color:var(--gold);margin-top:6px">Read-only view. You can see everything and print any document; editing is done by the sales team.</p>':''}
   ${!ro&&a.status!=='Declined'?`<div class="statusrow">${STATUSES.map(s=>`<button class="${a.status===s?'on':''}" onclick="statusFromDossier('${s}')">${s}</button>`).join('')}
     <button style="color:var(--bad);border-color:var(--bad)" onclick="openDeclineModal()">Decline...</button></div>`:''}
@@ -1059,7 +1060,10 @@ function openDossier(id,tab){
     <div class="field"><label>Repeat follow-up</label><select id="f_recur" ${ro?'disabled':''}>
       ${['','weekly','monthly','quarterly'].map(r=>`<option value="${r}" ${a.recur===r?'selected':''}>${r||'no repeat'}</option>`).join('')}</select></div>
     <div class="field"><label>Area (for route planning)</label><select id="f_area" ${ro?'disabled':''}>
-      ${[''].concat(AREAS).concat(a.area&&!AREAS.includes(a.area)?[a.area]:[]).map(r=>`<option value="${esc(r)}" ${a.area===r?'selected':''}>${esc(r||'not set')}</option>`).join('')}</select></div></div>
+      ${[''].concat(AREAS).concat(a.area&&!AREAS.includes(a.area)?[a.area]:[]).map(r=>`<option value="${esc(r)}" ${a.area===r?'selected':''}>${esc(r||'not set')}</option>`).join('')}</select></div>
+    <div class="field"><label>Category</label><select id="f_category" ${ro?'disabled':''}>
+      ${CATEGORIES.map(c=>`<option value="${esc(c)}" ${a.category===c?'selected':''}>${esc(c)}</option>`).join('')}</select></div>
+    <div class="field"><label>Segment detail (free text, e.g. Study cafe, Boutique hotel)</label><input id="f_subcategory" value="${esc(a.subcategory||'')}" ${ro?'disabled':''}></div></div>
     <div style="font-size:11px;color:var(--ink2);margin-top:6px">Record quality: <b>${qualityScore(a).score}/100</b>${qualityScore(a).miss.length?' · missing '+esc(qualityScore(a).miss.join(', ')):' · complete'}</div>
     <div class="field" style="margin-top:8px"><label>Notes</label><textarea id="f_notes" rows="2" ${ro?'disabled':''}>${esc(a.notes)}</textarea></div>
     ${ro?'':'<div class="copyrow"><button class="btn primary" onclick="saveFields()">Save</button></div>'}</div>
@@ -1093,8 +1097,9 @@ function closeDossier(){document.getElementById('overlay').classList.add('hidden
 async function statusFromDossier(s){if(!CUR)return;const a=CUR;closeDossier();await changeStatus(a,s);}
 async function saveFields(){
   if(!canEdit()||!CUR)return;
-  const u={};['contact_person','phone','email','instagram','next_action','next_action_date','est_value_jod','decision_maker','notes','recur','area'].forEach(k=>{const el=document.getElementById('f_'+k);if(el)u[k]=el.value||null;});
+  const u={};['contact_person','phone','email','instagram','next_action','next_action_date','est_value_jod','decision_maker','notes','recur','area','category','subcategory'].forEach(k=>{const el=document.getElementById('f_'+k);if(el)u[k]=el.value||null;});
   if(u.est_value_jod==='')u.est_value_jod=null;if(u.next_action_date==='')u.next_action_date=null;if(u.recur===null)u.recur='';
+  if(!CATEGORIES.includes(u.category))u.category='Other';if(u.subcategory===null)u.subcategory='';
   /* saving the form IS the human confirmation: any value present becomes confirmed,
      including agreeing with the agent's guess unchanged. Clearing it drops the flag. */
   u.value_source = (u.est_value_jod!=null && String(u.est_value_jod).trim()!=='') ? 'confirmed' : '';
@@ -1340,11 +1345,15 @@ async function optimizeRoute(){
 /* ============ v9: OSM PROSPECT FINDER (free, no key) ============ */
 const OSM_AREA=3602926344; /* Amman governorate: OSM relation 2926344 + 3600000000 */
 const OSM_PRESETS={
-  'Cafes':'"amenity"="cafe"','Hotels':'"tourism"="hotel"','Bookshops':'"shop"="books"',
+  'Cafes':'"amenity"="cafe"','Hotels':'"tourism"="hotel"',
   'Kids/toys':'"shop"="toys"','Pharmacies':'"amenity"="pharmacy"','Libraries':'"amenity"="library"',
   'Art/culture':'"amenity"="arts_centre"','Coworking':'"amenity"="coworking_space"',
   'Gift shops':'"shop"="gift"','Malls':'"shop"="mall"','Restaurants':'"amenity"="restaurant"',
   'Clinics':'"amenity"="clinic"','Museums':'"tourism"="museum"','Stationery':'"shop"="stationery"'};
+/* Bookshops preset removed: bookshops are a banned target (UBCC supplies them already). */
+const OSM_GROUP={'Cafes':'Cafes & Coffee','Hotels':'Hotels & Tourism','Kids/toys':'Kids, Baby & Pharmacy','Pharmacies':'Kids, Baby & Pharmacy',
+  'Libraries':'Libraries & Learning','Art/culture':'Culture & Arts','Coworking':'Professional & Design Firms','Gift shops':'Retail & Lifestyle',
+  'Malls':'Retail & Lifestyle','Restaurants':'Cafes & Coffee','Clinics':'Wellness & Health','Museums':'Culture & Arts','Stationery':'Retail & Lifestyle'};
 async function findOSM(){
   const type=document.getElementById('osmType').value;
   const out=document.getElementById('osmOut');
@@ -1376,7 +1385,7 @@ async function addOSM(i){
   OSMBUSY=true;
   try{
   const type=document.getElementById('osmType').value;
-  const {error}=await sb.from('b2b_accounts').insert({name:x.name,category:type,area:x.area||'Other',
+  const {error}=await sb.from('b2b_accounts').insert({name:x.name,category:OSM_GROUP[type]||'Other',subcategory:type,area:x.area||'Amman',
     phone:x.phone||'',instagram:x.ig||'',source:x.web||'OpenStreetMap',
     hook:'Found via OpenStreetMap ('+type+' in Amman). Verify before outreach.',
     status:'To Contact',verified:false,date_added:today(),updated_by:by(),run:-1,
@@ -1858,14 +1867,17 @@ async function saveMeeting(id){
 
 /* ============ EMAIL CREATOR ============ */
 const SEG_VALUE=[
- [/coffee|cafe|study/i,{pain:"guests finish their drink and leave",gain:"a curated shelf keeps guests seated longer and gives your space an identity people photograph and share"}],
+ [/gift/i,{pain:"corporate gifts default to mugs and chocolates that nobody keeps",gain:"a well-chosen book in the hamper is the item people keep, and we supply English and Arabic titles wholesale with lead times that fit the Q4 rush"}],
+ [/coffee|cafe|study|restaurant/i,{pain:"guests finish their drink and leave",gain:"a curated shelf keeps guests seated longer and gives your space an identity people photograph and share"}],
  [/kids|baby|toy|pharma/i,{pain:"parents want meaningful add-ons at checkout",gain:"board books and bedtime stories sell beside your products with zero inventory risk"}],
  [/hotel|resort|lodge|lounge|tourism|eco/i,{pain:"kids clubs and lobbies offer screens, not memories",gain:"a curated reading corner becomes a guest-experience upgrade reviewers mention"}],
- [/coworking|hub|incubator/i,{pain:"members expect more than desks",gain:"a rotating business and startup shelf becomes a perk that costs you nothing upfront"}],
+ [/coworking|hub|incubator|professional|design firm|firms/i,{pain:"reception areas and client lounges say nothing about the firm",gain:"a curated business, design and Amman heritage shelf signals culture to clients, doubles as a staff perk, and we rotate it"}],
  [/csr|bank|corporate|insurance|telecom/i,{pain:"CSR programs need visible, reportable education impact",gain:"branded book distributions deliver measurable impact numbers for your sustainability report"}],
- [/ngo|un-|foundation|institution|library|cultural|museum|edu/i,{pain:"program budgets need reliable local fulfillment",gain:"20,000+ titles in Amman stock, JOD invoicing and 5-branch delivery remove import risk from your program"}],
- [/mall|lifestyle|retail|stationery|boutique/i,{pain:"footfall needs fresh reasons to stop",gain:"a book corner or seasonal pop-up adds dwell time and a new margin line on consignment"}],
- [/language/i,{pain:"learners need readers and exam prep faster than UK shipping cycles",gain:"same-week local replenishment of graded readers and exam materials"}]];
+ [/language/i,{pain:"learners need readers and exam prep faster than UK shipping cycles",gain:"same-week local replenishment of graded readers and exam materials"}],
+ [/cultur|museum|arts/i,{pain:"visitors leave with a ticket stub, not a memory",gain:"a curated shop shelf or event pop-up of art, heritage and children's titles on consignment, rotated by us"}],
+ [/wellness|health|hospital|clinic/i,{pain:"waiting areas and lounges offer nothing to hold",gain:"a curated wellbeing and children's shelf turns waiting time into a calmer experience and a retail add-on"}],
+ [/ngo|\bun\b|foundation|institution|librar|learning|edu/i,{pain:"program budgets need reliable local fulfillment",gain:"20,000+ titles in Amman stock, JOD invoicing and 5-branch delivery remove import risk from your program"}],
+ [/mall|lifestyle|retail|stationery|boutique/i,{pain:"footfall needs fresh reasons to stop",gain:"a book corner or seasonal pop-up adds dwell time and a new margin line on consignment"}]];
 function segVal(cat){for(const [re,v] of SEG_VALUE)if(re.test(cat||''))return v;
   return {pain:"finding reliable book supply in Jordan is harder than it should be",gain:"a curated selection from 20,000+ titles, delivered and rotated by us on flexible terms"};}
 function greet(a){const p=(a.contact_person||'').trim();return p?p.split(' ')[0]:'there';}
@@ -1946,7 +1958,7 @@ function closePalette(){document.getElementById('palette').classList.add('hidden
 /* ============ CSV ============ */
 function csvSafe(v){const s=String(v??'');return /^[=+\-@\t\r]/.test(s)?"'"+s:s;}
 function exportCSV(){
-  const cols=['name','category','area','status','score','contact_person','phone','email','instagram','decision_maker','deal_model','hook','next_action','next_action_date','est_value_jod','close_reason','declined_reason','notes'];
+  const cols=['name','category','subcategory','area','status','score','contact_person','phone','email','instagram','decision_maker','deal_model','hook','next_action','next_action_date','est_value_jod','close_reason','declined_reason','notes'];
   const rows=[cols.join(',')].concat(ACC.map(a=>cols.map(c=>'"'+csvSafe(a[c]).replace(/"/g,'""')+'"').join(',')));
   const u=URL.createObjectURL(new Blob(["﻿"+rows.join("\n")],{type:'text/csv'}));
   const l=document.createElement('a');l.href=u;l.download='ubcc-b2b-pipeline.csv';l.click();}
