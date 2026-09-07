@@ -333,7 +333,7 @@ body.printing #app,body.printing #login,body.printing #toast,body.printing #seas
 
 <script>
 /* ============ CONFIG + STATE ============ */
-const APP_VERSION = "v13 · 7 Sep 2026";
+const APP_VERSION = "v13.1 · 7 Sep 2026";
 const SUPABASE_URL = "https://qxjlgfqvqhtrbttcgysw.supabase.co";
 const SUPABASE_KEY = "sb_publishable_FOeLR9B2zA6pRow0dcDqCw_2bHgiVar";
 const STATUSES = ["To Contact","Contacted","Meeting","Proposal","Pilot","Won","Dead"];
@@ -353,7 +353,7 @@ const MEMBERS = {
   'osama@legenda-b2b.app':{name:'Dr. Osama',role:'viewer'}};
 const CLOSE_REASONS = {Won:['Consignment shelf agreed','Wholesale order','Gifting/CSR deal','Event or pop-up','Library/institutional supply','Other'],
   Dead:['No budget','Timing, revisit later','Chose a competitor','No decision maker access','Wrong titles/fit','Unreachable','Other']};
-const AREAS = ['Abdoun','Sweifieh','Shmeisani','Jabal Amman','Weibdeh','Abdali','Khalda','Dabouq','Deir Ghbar','Mecca St','Gardens','Downtown','Airport Road','Zarqa','Irbid','Dead Sea','Aqaba','Petra','Madaba','Other'];
+const AREAS = ['Abdoun','Sweifieh','Shmeisani','Jabal Amman','Weibdeh','Abdali','Khalda','Dabouq','Deir Ghbar','Mecca St','Gardens','Downtown','Airport Road','Amman','Zarqa','Irbid','Dead Sea','Aqaba','Petra','Madaba','Other']; // 'Amman' = city known, district not yet
 const active   = () => ACC.filter(a=>a.status!=='Declined');
 const declined = () => ACC.filter(a=>a.status==='Declined');
 const canEdit  = () => ROLE==='sales';
