@@ -333,7 +333,7 @@ body.printing #app,body.printing #login,body.printing #toast,body.printing #seas
 
 <script>
 /* ============ CONFIG + STATE ============ */
-const APP_VERSION = "v14 · 7 Sep 2026";
+const APP_VERSION = "v14.1 · 9 Sep 2026";
 const SUPABASE_URL = "https://qxjlgfqvqhtrbttcgysw.supabase.co";
 const SUPABASE_KEY = "sb_publishable_FOeLR9B2zA6pRow0dcDqCw_2bHgiVar";
 const STATUSES = ["To Contact","Contacted","Meeting","Proposal","Pilot","Won","Dead"];
@@ -965,7 +965,24 @@ function renderHealth(){
   <div class="sect"><h3>Dead source links (${deadlink.length})</h3>${deadlink.map(li).join('')||'None'}</div>
   <div class="sect"><h3>No decision maker (${nodm.length})</h3>${nodm.slice(0,15).map(li).join('')||'None'}</div>
   <div class="sect"><h3>No contact channel (${nocontact.length})</h3>${nocontact.slice(0,15).map(li).join('')||'None'}</div>
-  <div class="sect"><h3>Possible duplicates (${dups.length})</h3>${dups.map(d=>`<div class="rowitem">${esc(d)}</div>`).join('')||'None'}</div>`;}
+  <div class="sect"><h3>Possible duplicates (${dups.length})</h3>${dups.map(d=>`<div class="rowitem">${esc(d)}</div>`).join('')||'None'}</div>
+  <div class="sect" id="maintLog"><h3>Daily maintenance log</h3><div style="color:var(--ink2);font-size:12px">Loading...</div></div>`;
+  renderMaintLog();}
+/* v14.1: the 05:30 maintenance task writes one row a day; show the last 7 so the team sees fixes and alerts without asking */
+async function renderMaintLog(){
+  const box=document.getElementById('maintLog');if(!box)return;
+  let rows=[];
+  try{const {data,error}=await sb.from('b2b_maintenance_log').select('run_date,kind,summary,fixes,alerts,checks').order('run_date',{ascending:false}).order('id',{ascending:false}).limit(7);if(!error)rows=data||[];}catch(e){}
+  if(!rows.length){box.innerHTML='<h3>Daily maintenance log</h3><div style="color:var(--ink2);font-size:12px">No runs yet. The maintenance task runs every day at 05:30 and writes here.</div>';return;}
+  const n=x=>Array.isArray(x)?x.length:0;
+  box.innerHTML='<h3>Daily maintenance log</h3>'+rows.map(r=>{
+    const alerts=Array.isArray(r.alerts)?r.alerts:[];
+    const c=r.checks||{};
+    return `<div class="rowitem" style="flex-direction:column;align-items:stretch;gap:4px">
+      <div><b>${esc(r.run_date)}</b> <span class="pill ${alerts.length?'red':'green'}">${alerts.length?alerts.length+' alert'+(alerts.length>1?'s':''):'clean'}</span> <span class="pill">${esc(r.kind)}</span> <span class="pill">${n(r.fixes)} fix${n(r.fixes)===1?'':'es'}</span>${c.accounts?`<span class="pill">${c.accounts} accounts</span>`:''}${c.logic_tests?`<span class="pill">tests ${esc(String(c.logic_tests))}</span>`:''}</div>
+      <div style="font-size:12px">${esc(r.summary||'')}</div>
+      ${alerts.length?`<div style="font-size:12px;color:var(--bad)">${alerts.slice(0,5).map(a=>'• '+esc(typeof a==='string'?a:(a.title||a.text||JSON.stringify(a)))).join('<br>')}</div>`:''}
+    </div>`;}).join('');}
 function renderDeclined(){
   const el=document.getElementById('v-declined');const D=declined();
   const reasons={};D.forEach(a=>{reasons[a.declined_reason||'No reason recorded']=(reasons[a.declined_reason||'No reason recorded']||0)+1;});
