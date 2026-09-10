@@ -1,4 +1,4 @@
-const V='b2b-v10';
+const V='b2b-v11';
 /* Assets only. The HTML is NEVER cached: every launch fetches the current app,
    so a deploy reaches the team immediately instead of after a cache expiry. */
 const ASSETS=['./manifest.webmanifest','./icon-192.png','./icon-512.png'];
@@ -10,8 +10,11 @@ self.addEventListener('fetch',e=>{
   if(u.hostname.endsWith('supabase.co'))return;              /* never touch the API */
   const isDoc=e.request.mode==='navigate'||u.pathname.endsWith('/')||u.pathname.endsWith('index.html');
   if(u.origin===location.origin&&isDoc){
-    /* network first, no-store; only fall back to a cached copy when truly offline */
-    e.respondWith(fetch(e.request,{cache:'no-store'})
+    /* network first, no-store, and a per-request cache-buster so the GitHub Pages CDN edge
+       (which keeps HTML up to 10 minutes) cannot hand back a pre-deploy copy; only fall back
+       to a cached copy when truly offline */
+    const fresh=new URL(u.href);fresh.searchParams.set('_sw',Date.now().toString(36));
+    e.respondWith(fetch(fresh.href,{cache:'no-store',credentials:'same-origin'})
       .then(r=>{const cl=r.clone();caches.open(V).then(c=>c.put('./index.html',cl));return r;})
       .catch(()=>caches.match('./index.html')));
     return;}
