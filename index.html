@@ -333,7 +333,7 @@ body.printing #app,body.printing #login,body.printing #toast,body.printing #seas
 
 <script>
 /* ============ CONFIG + STATE ============ */
-const APP_VERSION = "v14.1 · 9 Sep 2026";
+const APP_VERSION = "v14.2 · 10 Sep 2026";
 const SUPABASE_URL = "https://qxjlgfqvqhtrbttcgysw.supabase.co";
 const SUPABASE_KEY = "sb_publishable_FOeLR9B2zA6pRow0dcDqCw_2bHgiVar";
 const STATUSES = ["To Contact","Contacted","Meeting","Proposal","Pilot","Won","Dead"];
@@ -1650,7 +1650,7 @@ function buildProposal(id){
   const val=isConfirmed(a)?(+a.est_value_jod||0):0; // never print an agent estimate in a client document
   const body=`
    <h2 class="display" style="color:var(--teal)">1. What we understand</h2>
-   <p>${esc(a.hook||v.pain)}</p>
+   <p>${esc(clientLead(a)||('At '+a.name+', '+v.pain+'.'))}</p>
    <h2 class="display" style="color:var(--teal);margin-top:18px">2. What we propose</h2>
    <p>${esc(v.gain.charAt(0).toUpperCase()+v.gain.slice(1))}. UBCC curates the selection, delivers it to ${esc(a.name)}, and rotates titles that do not move, so the shelf stays fresh without any work on your side.</p>
    ${lists.length?`<p><b>Proposed selection:</b> ${lists.map(l=>esc(l.name)+' ('+(l.parsed?l.parsed.length:0)+' titles)').join(', ')}. A full illustrated catalog is attached or shared as a link.</p>`:''}
@@ -1895,14 +1895,17 @@ const SEG_VALUE=[
  [/wellness|health|hospital|clinic/i,{pain:"waiting areas and lounges offer nothing to hold",gain:"a curated wellbeing and children's shelf turns waiting time into a calmer experience and a retail add-on"}],
  [/ngo|\bun\b|foundation|institution|librar|learning|edu/i,{pain:"program budgets need reliable local fulfillment",gain:"20,000+ titles in Amman stock, JOD invoicing and 5-branch delivery remove import risk from your program"}],
  [/mall|lifestyle|retail|stationery|boutique/i,{pain:"footfall needs fresh reasons to stop",gain:"a book corner or seasonal pop-up adds dwell time and a new margin line on consignment"}]];
+/* v14.2: the hook is internal research (citations, dates, audit notes). Client-facing text comes from opening_line,
+   which the radar and the team write for outreach. Never print a hook to a client. */
+function clientLead(a){const s=(a&&a.opening_line||'').trim();if(!s)return '';return /[.!?؟]$/.test(s)?s:s+'.';}
 function segVal(cat){for(const [re,v] of SEG_VALUE)if(re.test(cat||''))return v;
   return {pain:"finding reliable book supply in Jordan is harder than it should be",gain:"a curated selection from 20,000+ titles, delivered and rotated by us on flexible terms"};}
 function greet(a){const p=(a.contact_person||'').trim();return p?p.split(' ')[0]:'there';}
 function greetAr(a){const p=(a.contact_person||'').trim();return p?('أستاذ/ة '+p.split(' ')[0]):'حضرتكم';}
 function buildEmail(a,goal){
-  const v=segVal(a.category),hook=(a.hook||'').split(';')[0],model=a.deal_model||'consignment (you pay only on sales)';
+  const v=segVal(a.category),lead=clientLead(a),model=a.deal_model||'consignment (you pay only on sales)';
   const EN={
-   first:{subj:`A book corner idea for ${a.name}`,body:`Dear ${greet(a)},\n\nI am Ahmad El-Hafez from UBCC / Legenda Bookstore, a Jordanian book distributor since 1995 with 20,000+ English and Arabic titles.\n\n${hook?`I am writing because ${hook.charAt(0).toLowerCase()+hook.slice(1)}.`:`I am writing because ${v.pain}.`} We believe ${v.gain}.\n\nConcretely: ${model}, monthly settlement, we curate, deliver and rotate everything. Our shelves at partner venues in Amman are already live.\n\nWould you be open to a 20-minute coffee this week or next? I will bring a sample selection matched to ${a.name}.\n\nBest regards,\nAhmad El-Hafez\nUBCC / Legenda Bookstore · legendabookstore.com`},
+   first:{subj:`A book corner idea for ${a.name}`,body:`Dear ${greet(a)},\n\nI am Ahmad El-Hafez from UBCC / Legenda Bookstore, a Jordanian book distributor since 1995 with 20,000+ English and Arabic titles.\n\n${lead?lead:`I am writing because ${v.pain}.`} We believe ${v.gain}.\n\nConcretely: ${model}, monthly settlement, we curate, deliver and rotate everything. Our shelves at partner venues in Amman are already live.\n\nWould you be open to a 20-minute coffee this week or next? I will bring a sample selection matched to ${a.name}.\n\nBest regards,\nAhmad El-Hafez\nUBCC / Legenda Bookstore · legendabookstore.com`},
    follow:{subj:`Following up: books at ${a.name}`,body:`Dear ${greet(a)},\n\nFollowing up on my earlier note about a curated book presence at ${a.name}. I know weeks get busy.\n\nOne line of context: ${v.gain}, on ${model}, so there is no cost to try.\n\nWould 20 minutes over coffee this week work? If another person handles this, I would appreciate the right introduction.\n\nBest regards,\nAhmad El-Hafez · UBCC / Legenda`},
    meeting:{subj:`Confirming our meeting · UBCC / Legenda`,body:`Dear ${greet(a)},\n\nThank you for making the time. Confirming our meeting; I will bring a sample selection for ${a.name} and a one-page proposal covering selection, ${model}, and how settlement works.\n\nIf any colleague should join, they are most welcome.\n\nSee you soon,\nAhmad El-Hafez · UBCC / Legenda`},
    proposal:{subj:`Next step on our proposal · ${a.name}`,body:`Dear ${greet(a)},\n\nI hope the proposal landed well. Two things worth repeating: there is no upfront cost on ${model}, and we handle curation, delivery and rotation entirely.\n\nIf terms need adjusting, payment schedule and selection are both flexible; tell me what would make this an easy yes.\n\nShall we close this over coffee this week?\n\nBest regards,\nAhmad El-Hafez · UBCC / Legenda`},
