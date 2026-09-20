@@ -333,7 +333,7 @@ body.printing #app,body.printing #login,body.printing #toast,body.printing #seas
 
 <script>
 /* ============ CONFIG + STATE ============ */
-const APP_VERSION = "v14.2 · 10 Sep 2026";
+const APP_VERSION = "v15 · 20 Sep 2026";
 const SUPABASE_URL = "https://qxjlgfqvqhtrbttcgysw.supabase.co";
 const SUPABASE_KEY = "sb_publishable_FOeLR9B2zA6pRow0dcDqCw_2bHgiVar";
 const STATUSES = ["To Contact","Contacted","Meeting","Proposal","Pilot","Won","Dead"];
@@ -351,6 +351,7 @@ const MEMBERS = {
   'ahmad@legenda-b2b.app':{name:'Ahmad',role:'sales'},
   'shereen@legenda-b2b.app':{name:'Shereen',role:'sales'},
   'fadi@legenda-b2b.app':{name:'Fadi',role:'sales'},
+  'khalil@legenda-b2b.app':{name:'Khalil',role:'sales'},
   'osama@legenda-b2b.app':{name:'Dr. Osama',role:'viewer'}};
 const CLOSE_REASONS = {Won:['Consignment shelf agreed','Wholesale order','Gifting/CSR deal','Event or pop-up','Library/institutional supply','Other'],
   Dead:['No budget','Timing, revisit later','Chose a competitor','No decision maker access','Wrong titles/fit','Unreachable','Other']};
@@ -1568,6 +1569,28 @@ async function saveTargets(){
   const {error}=await sb.from('b2b_settings').upsert({key:'targets',value:v},{onConflict:'key'});
   if(error){toast('Failed: '+error.message);return;}
   SETTINGS.targets=v;document.getElementById('modal').classList.add('hidden');saveCache();toast('Targets saved');renderOwner();}
+/* v15: edit the person who signs client documents and sends outreach */
+function openSender(){
+  if(!canEdit())return;const s=sender();const m=document.getElementById('modal');m.classList.remove('hidden');
+  m.innerHTML=`<div class="box"><h3>Who signs and sends</h3>
+   <p style="font-size:12px;color:var(--ink2);margin-bottom:10px">This name appears on every proposal, agreement and outreach email the app writes. Change it here when the person handling B2B changes; no deploy needed.</p>
+   <div class="field"><label>Name (English)</label><input id="s_name" value="${esc(s.name)}"></div>
+   <div class="field" style="margin-top:8px"><label>Name (Arabic)</label><input id="s_name_ar" dir="rtl" value="${esc(s.name_ar)}"></div>
+   <div class="field" style="margin-top:8px"><label>Title</label><input id="s_title" value="${esc(s.title)}"></div>
+   <div class="field" style="margin-top:8px"><label>Email</label><input id="s_email" value="${esc(s.email)}"></div>
+   <div class="field" style="margin-top:8px"><label>Company (English)</label><input id="s_company" value="${esc(s.company)}"></div>
+   <div class="field" style="margin-top:8px"><label>Company (Arabic)</label><input id="s_company_ar" dir="rtl" value="${esc(s.company_ar)}"></div>
+   <div class="copyrow"><button class="btn primary" onclick="saveSender()">Save</button>
+   <button class="btn" onclick="document.getElementById('modal').classList.add('hidden')">Cancel</button></div></div>`;}
+async function saveSender(){
+  const g=id=>(document.getElementById(id).value||'').trim();
+  const v={name:g('s_name'),name_ar:g('s_name_ar'),title:g('s_title'),email:g('s_email'),
+    company:g('s_company'),company_ar:g('s_company_ar'),
+    company_short:g('s_company').replace(/ Bookstore$/,''),website:sender().website};
+  if(!v.name){toast('A name is required');return;}
+  const {error}=await sb.from('b2b_settings').upsert({key:'company',value:v},{onConflict:'key'});
+  if(error){toast('Failed: '+error.message);return;}
+  SETTINGS.company=v;document.getElementById('modal').classList.add('hidden');saveCache();toast('Saved: documents now sign as '+v.name);}
 
 /* F5. Weekly digest, shareable */
 function digestText(){
@@ -1664,7 +1687,7 @@ function buildProposal(id){
    <p>Jordanian book distributor since 1995. Over 20,000 imported English and Arabic titles, five branches and warehouses, JOD invoicing and local delivery in days rather than the weeks an international order takes. Partner shelves are already live in Amman venues.</p>
    <h2 class="display" style="color:var(--teal);margin-top:18px">5. Next step</h2>
    <p>A short meeting to agree the selection and start a ${esc(a.deal_model||'consignment')} pilot. We can have books on your shelf within two weeks of approval.</p>
-   <p style="margin-top:14px">Prepared for <b>${esc(a.contact_person||a.decision_maker||a.name)}</b> by Ahmad El-Hafez · UBCC / Legenda · ${new Date().toLocaleDateString()}</p>`;
+   <p style="margin-top:14px">Prepared for <b>${esc(a.contact_person||a.decision_maker||a.name)}</b> by ${esc(sender().name)} · ${esc(sender().company_short)} · ${new Date().toLocaleDateString()}</p>`;
   openDoc(docShell('Partnership proposal','For '+a.name+' · '+(a.area||'Amman'),body));}
 function buildAgreement(id){
   const a=ACC.find(x=>x.id===id);if(!a)return;
@@ -1685,7 +1708,7 @@ function buildAgreement(id){
    <h2 class="display" style="color:var(--teal);margin-top:16px">7. General</h2>
    <p>This agreement is governed by the laws of the Hashemite Kingdom of Jordan. It may be signed in Arabic and English; in case of conflict the Arabic version prevails.</p>
    <table style="width:100%;margin-top:28px;font-size:13px"><tr>
-     <td style="padding:10px;width:50%">For UBCC / Legenda<br><br>Name: Ahmad El-Hafez<br><br>Signature: ______________<br><br>Date: __________</td>
+     <td style="padding:10px;width:50%">For ${esc(sender().company_short)}<br><br>Name: ${esc(sender().name)}<br><br>Signature: ______________<br><br>Date: __________</td>
      <td style="padding:10px;width:50%">For ${esc(a.name)}<br><br>Name: ${esc(a.contact_person||'______________')}<br><br>Signature: ______________<br><br>Date: __________</td></tr></table>
    <p style="font-size:11px;color:var(--ink2);margin-top:18px">Draft prepared ${new Date().toLocaleDateString()} for discussion. Have it reviewed before signing; this is a template, not legal advice.</p>`;
   openDoc(docShell('Consignment agreement (draft)',a.name+' · '+new Date().toLocaleDateString(),body));}
@@ -1820,6 +1843,10 @@ function renderTools(){
   const noVal=A.filter(a=>!['Won','Dead'].includes(a.status)&&!a.est_value_jod);
   const age=backupAge();
   el.innerHTML=`<h2 class="display" style="color:var(--teal);margin-bottom:10px">Tools</h2>
+  <div class="sect"><h3>Who signs and sends</h3>
+    <p style="font-size:12px;color:var(--ink2)">Every proposal, agreement and outreach email the app writes goes out under this name. Update it when the person handling B2B changes.</p>
+    <p style="margin-top:6px"><b>${esc(sender().name)}</b> <span style="color:var(--ink2);font-size:12px">${esc(sender().title)} · ${esc(sender().email)}</span></p>
+    ${canEdit()?`<div class="copyrow"><button class="btn primary" onclick="openSender()">Change</button></div>`:''}</div>
   <div class="sect"><h3>Backup</h3>
     <p style="font-size:12px;color:var(--ink2)">Supabase's free plan keeps no backups. Download everything as one Excel file, ideally weekly.</p>
     ${age>14?`<p class="pill red" style="display:inline-block;margin-top:6px">Last backup ${age===999?'never':age+' days ago'}</p>`:`<p class="pill green" style="display:inline-block;margin-top:6px">Last backup ${age} days ago</p>`}
@@ -1898,25 +1925,34 @@ const SEG_VALUE=[
 /* v14.2: the hook is internal research (citations, dates, audit notes). Client-facing text comes from opening_line,
    which the radar and the team write for outreach. Never print a hook to a client. */
 function clientLead(a){const s=(a&&a.opening_line||'').trim();if(!s)return '';return /[.!?؟]$/.test(s)?s:s+'.';}
+/* v15: whoever signs proposals and sends outreach lives in b2b_settings.company, edited in Tools.
+   A handover changes one settings row, never the code. */
+const SENDER_DEFAULT={name:'Khalil Khoury',name_ar:'خليل خوري',title:'B2B Partnerships',
+  email:'k.khoury@ubcc-jordan.com',company:'UBCC / Legenda Bookstore',company_ar:'UBCC / مكتبة ليجيندا',
+  company_short:'UBCC / Legenda',website:'legendabookstore.com'};
+function sender(){const c=(typeof SETTINGS!=='undefined'&&SETTINGS&&SETTINGS.company)||{};const s=Object.assign({},SENDER_DEFAULT);
+  Object.keys(SENDER_DEFAULT).forEach(k=>{if(c[k]&&String(c[k]).trim())s[k]=String(c[k]).trim();});
+  s.first=s.name.split(' ')[0];s.first_ar=s.name_ar.split(' ')[0];return s;}
 function segVal(cat){for(const [re,v] of SEG_VALUE)if(re.test(cat||''))return v;
   return {pain:"finding reliable book supply in Jordan is harder than it should be",gain:"a curated selection from 20,000+ titles, delivered and rotated by us on flexible terms"};}
 function greet(a){const p=(a.contact_person||'').trim();return p?p.split(' ')[0]:'there';}
 function greetAr(a){const p=(a.contact_person||'').trim();return p?('أستاذ/ة '+p.split(' ')[0]):'حضرتكم';}
 function buildEmail(a,goal){
+  const S=sender();
   const v=segVal(a.category),lead=clientLead(a),model=a.deal_model||'consignment (you pay only on sales)';
   const EN={
-   first:{subj:`A book corner idea for ${a.name}`,body:`Dear ${greet(a)},\n\nI am Ahmad El-Hafez from UBCC / Legenda Bookstore, a Jordanian book distributor since 1995 with 20,000+ English and Arabic titles.\n\n${lead?lead:`I am writing because ${v.pain}.`} We believe ${v.gain}.\n\nConcretely: ${model}, monthly settlement, we curate, deliver and rotate everything. Our shelves at partner venues in Amman are already live.\n\nWould you be open to a 20-minute coffee this week or next? I will bring a sample selection matched to ${a.name}.\n\nBest regards,\nAhmad El-Hafez\nUBCC / Legenda Bookstore · legendabookstore.com`},
-   follow:{subj:`Following up: books at ${a.name}`,body:`Dear ${greet(a)},\n\nFollowing up on my earlier note about a curated book presence at ${a.name}. I know weeks get busy.\n\nOne line of context: ${v.gain}, on ${model}, so there is no cost to try.\n\nWould 20 minutes over coffee this week work? If another person handles this, I would appreciate the right introduction.\n\nBest regards,\nAhmad El-Hafez · UBCC / Legenda`},
-   meeting:{subj:`Confirming our meeting · UBCC / Legenda`,body:`Dear ${greet(a)},\n\nThank you for making the time. Confirming our meeting; I will bring a sample selection for ${a.name} and a one-page proposal covering selection, ${model}, and how settlement works.\n\nIf any colleague should join, they are most welcome.\n\nSee you soon,\nAhmad El-Hafez · UBCC / Legenda`},
-   proposal:{subj:`Next step on our proposal · ${a.name}`,body:`Dear ${greet(a)},\n\nI hope the proposal landed well. Two things worth repeating: there is no upfront cost on ${model}, and we handle curation, delivery and rotation entirely.\n\nIf terms need adjusting, payment schedule and selection are both flexible; tell me what would make this an easy yes.\n\nShall we close this over coffee this week?\n\nBest regards,\nAhmad El-Hafez · UBCC / Legenda`},
-   revive:{subj:`Picking our conversation back up · ${a.name}`,body:`Dear ${greet(a)},\n\nWe spoke a while back about books at ${a.name}; timing was not right then. Two things changed: our partner-venue program has grown across Amman, and the coming season is the strongest window for it.\n\nThe offer stands: ${model}, zero upfront, we do the work. Worth a fresh 20 minutes?\n\nBest regards,\nAhmad El-Hafez · UBCC / Legenda`}};
+   first:{subj:`A book corner idea for ${a.name}`,body:`Dear ${greet(a)},\n\nI am ${S.name} from ${S.company}, a Jordanian book distributor since 1995 with 20,000+ English and Arabic titles.\n\n${lead?lead:`I am writing because ${v.pain}.`} We believe ${v.gain}.\n\nConcretely: ${model}, monthly settlement, we curate, deliver and rotate everything. Our shelves at partner venues in Amman are already live.\n\nWould you be open to a 20-minute coffee this week or next? I will bring a sample selection matched to ${a.name}.\n\nBest regards,\n${S.name}\n${S.title}, ${S.company} · ${S.website}`},
+   follow:{subj:`Following up: books at ${a.name}`,body:`Dear ${greet(a)},\n\nFollowing up on my earlier note about a curated book presence at ${a.name}. I know weeks get busy.\n\nOne line of context: ${v.gain}, on ${model}, so there is no cost to try.\n\nWould 20 minutes over coffee this week work? If another person handles this, I would appreciate the right introduction.\n\nBest regards,\n${S.name} · ${S.company_short}`},
+   meeting:{subj:`Confirming our meeting · UBCC / Legenda`,body:`Dear ${greet(a)},\n\nThank you for making the time. Confirming our meeting; I will bring a sample selection for ${a.name} and a one-page proposal covering selection, ${model}, and how settlement works.\n\nIf any colleague should join, they are most welcome.\n\nSee you soon,\n${S.name} · ${S.company_short}`},
+   proposal:{subj:`Next step on our proposal · ${a.name}`,body:`Dear ${greet(a)},\n\nI hope the proposal landed well. Two things worth repeating: there is no upfront cost on ${model}, and we handle curation, delivery and rotation entirely.\n\nIf terms need adjusting, payment schedule and selection are both flexible; tell me what would make this an easy yes.\n\nShall we close this over coffee this week?\n\nBest regards,\n${S.name} · ${S.company_short}`},
+   revive:{subj:`Picking our conversation back up · ${a.name}`,body:`Dear ${greet(a)},\n\nWe spoke a while back about books at ${a.name}; timing was not right then. Two things changed: our partner-venue program has grown across Amman, and the coming season is the strongest window for it.\n\nThe offer stands: ${model}, zero upfront, we do the work. Worth a fresh 20 minutes?\n\nBest regards,\n${S.name} · ${S.company_short}`}};
   const arModel=(model.toLowerCase().includes('consignment'))?'نظام أمانة، بتدفعوا بس على المبيع':'ترتيب مرن يناسبكم';
   const AR={
-   first:{subj:`فكرة ركن كتب في ${a.name}`,body:`السلام عليكم ${greetAr(a)}،\n\nمعك أحمد الحافظ من UBCC / مكتبة ليجيندا، موزع كتب أردني منذ 1995 وعندنا أكثر من 20,000 عنوان عربي وإنجليزي.\n\nركن كتب مختار بعناية بيضيف قيمة حقيقية لمساحتكم وبيخلي الزوار يقعدوا أطول.\n\nعمليًا: ${arModel}، تسوية شهرية، ونحن منجهز ومنوصّل ومنبدّل الكتب.\n\nهل يناسبكم لقاء قصير على قهوة هالأسبوع أو الجاي؟ بجيب معي تشكيلة مقترحة خاصة بـ${a.name}.\n\nمع الاحترام،\nأحمد الحافظ · UBCC / ليجيندا`},
-   follow:{subj:`متابعة: الكتب في ${a.name}`,body:`السلام عليكم ${greetAr(a)}،\n\nبتابع رسالتي السابقة بخصوص ركن الكتب في ${a.name}، وبعرف إنه الجدول بكون مزحوم.\n\nباختصار: ما في أي تكلفة مقدمة، نحن منجهز كل شي وبتدفعوا بس على المبيع.\n\nبيناسبكم 20 دقيقة على قهوة هالأسبوع؟ وإذا في شخص ثاني مسؤول عن هالموضوع، بقدّر التحويلة الصحيحة.\n\nمع الاحترام،\nأحمد الحافظ · UBCC / ليجيندا`},
-   meeting:{subj:`تأكيد موعدنا · UBCC / ليجيندا`,body:`السلام عليكم ${greetAr(a)}،\n\nشكرًا لوقتكم. بأكد موعدنا، ورح أجيب معي تشكيلة كتب مقترحة لـ${a.name} وورقة وحدة فيها التفاصيل: التشكيلة، النظام، وطريقة التسوية.\n\nإذا في زميل حابب يحضر، أهلًا وسهلًا فيه.\n\nلقريب إن شاء الله،\nأحمد الحافظ · UBCC / ليجيندا`},
-   proposal:{subj:`الخطوة الجاية بخصوص العرض · ${a.name}`,body:`السلام عليكم ${greetAr(a)}،\n\nبتمنى العرض كان واضح. نقطتين بحب أأكد عليهم: ما في تكلفة مقدمة، ونحن منتولى التجهيز والتوصيل والتبديل بالكامل.\n\nوإذا في أي بند بدو تعديل، الدفع والتشكيلة مرنين؛ خبروني شو بيخلي القرار سهل.\n\nمنقفلها على قهوة هالأسبوع؟\n\nمع الاحترام،\nأحمد الحافظ · UBCC / ليجيندا`},
-   revive:{subj:`نرجع نكمل حديثنا · ${a.name}`,body:`السلام عليكم ${greetAr(a)}،\n\nحكينا قبل فترة عن الكتب في ${a.name} وما كان التوقيت مناسب. اليوم الوضع اختلف: برنامج شراكاتنا كبر بعمّان، والموسم الجاي أقوى فرصة له.\n\nالعرض بعده قائم: بدون أي مبلغ مقدم، ونحن منقوم بكل الشغل. شو رأيكم بـ20 دقيقة جديدة؟\n\nمع الاحترام،\nأحمد الحافظ · UBCC / ليجيندا`}};
+   first:{subj:`فكرة ركن كتب في ${a.name}`,body:`السلام عليكم ${greetAr(a)}،\n\nمعك ${S.name_ar} من ${S.company_ar}، موزع كتب أردني منذ 1995 وعندنا أكثر من 20,000 عنوان عربي وإنجليزي.\n\nركن كتب مختار بعناية بيضيف قيمة حقيقية لمساحتكم وبيخلي الزوار يقعدوا أطول.\n\nعمليًا: ${arModel}، تسوية شهرية، ونحن منجهز ومنوصّل ومنبدّل الكتب.\n\nهل يناسبكم لقاء قصير على قهوة هالأسبوع أو الجاي؟ بجيب معي تشكيلة مقترحة خاصة بـ${a.name}.\n\nمع الاحترام،\n${S.name_ar} · ${S.company_ar}`},
+   follow:{subj:`متابعة: الكتب في ${a.name}`,body:`السلام عليكم ${greetAr(a)}،\n\nبتابع رسالتي السابقة بخصوص ركن الكتب في ${a.name}، وبعرف إنه الجدول بكون مزحوم.\n\nباختصار: ما في أي تكلفة مقدمة، نحن منجهز كل شي وبتدفعوا بس على المبيع.\n\nبيناسبكم 20 دقيقة على قهوة هالأسبوع؟ وإذا في شخص ثاني مسؤول عن هالموضوع، بقدّر التحويلة الصحيحة.\n\nمع الاحترام،\n${S.name_ar} · ${S.company_ar}`},
+   meeting:{subj:`تأكيد موعدنا · UBCC / ليجيندا`,body:`السلام عليكم ${greetAr(a)}،\n\nشكرًا لوقتكم. بأكد موعدنا، ورح أجيب معي تشكيلة كتب مقترحة لـ${a.name} وورقة وحدة فيها التفاصيل: التشكيلة، النظام، وطريقة التسوية.\n\nإذا في زميل حابب يحضر، أهلًا وسهلًا فيه.\n\nلقريب إن شاء الله،\n${S.name_ar} · ${S.company_ar}`},
+   proposal:{subj:`الخطوة الجاية بخصوص العرض · ${a.name}`,body:`السلام عليكم ${greetAr(a)}،\n\nبتمنى العرض كان واضح. نقطتين بحب أأكد عليهم: ما في تكلفة مقدمة، ونحن منتولى التجهيز والتوصيل والتبديل بالكامل.\n\nوإذا في أي بند بدو تعديل، الدفع والتشكيلة مرنين؛ خبروني شو بيخلي القرار سهل.\n\nمنقفلها على قهوة هالأسبوع؟\n\nمع الاحترام،\n${S.name_ar} · ${S.company_ar}`},
+   revive:{subj:`نرجع نكمل حديثنا · ${a.name}`,body:`السلام عليكم ${greetAr(a)}،\n\nحكينا قبل فترة عن الكتب في ${a.name} وما كان التوقيت مناسب. اليوم الوضع اختلف: برنامج شراكاتنا كبر بعمّان، والموسم الجاي أقوى فرصة له.\n\nالعرض بعده قائم: بدون أي مبلغ مقدم، ونحن منقوم بكل الشغل. شو رأيكم بـ20 دقيقة جديدة؟\n\nمع الاحترام،\n${S.name_ar} · ${S.company_ar}`}};
   return {en:EN[goal],ar:AR[goal]};}
 function genEmail(){
   const goal=document.getElementById('g_goal').value,lang=document.getElementById('g_lang').value;
@@ -1928,9 +1964,10 @@ function genEmail(){
   html+=`<p style="font-size:11px;color:var(--ink2);margin-top:6px">Built only from stored account facts, nothing invented. After sending, log it below.</p>`;
   document.getElementById('genOut').innerHTML=html;}
 function genWA(){
+  const S=sender();
   const lang=document.getElementById('g_lang').value,v=segVal(CUR.category);
-  const en=`Hi ${greet(CUR)}, Ahmad from UBCC/Legenda Bookstore. Quick idea for ${CUR.name}: ${v.gain}. Zero upfront on consignment, we handle everything. Open to a 20-min coffee this week?`;
-  const ar=`مرحبا ${greetAr(CUR)}، أحمد من UBCC / مكتبة ليجيندا. فكرة سريعة لـ${CUR.name}: ركن كتب مختار، بدون أي تكلفة مقدمة ونحن منجهز كل شي. بيناسبك قهوة 20 دقيقة هالأسبوع؟`;
+  const en=`Hi ${greet(CUR)}, ${S.first} from ${S.company}. Quick idea for ${CUR.name}: ${v.gain}. Zero upfront on consignment, we handle everything. Open to a 20-min coffee this week?`;
+  const ar=`مرحبا ${greetAr(CUR)}، ${S.first_ar} من ${S.company_ar}. فكرة سريعة لـ${CUR.name}: ركن كتب مختار، بدون أي تكلفة مقدمة ونحن منجهز كل شي. بيناسبك قهوة 20 دقيقة هالأسبوع؟`;
   const phone=(CUR.phone||'').replace(/[^0-9]/g,'');let html='';
   if(lang!=='ar')html+=`<div class="gen" id="waEN">${esc(en)}</div><div class="copyrow"><button class="btn small primary" onclick="copyEl('waEN')">Copy</button>${phone?`<a class="btn small" target="_blank" href="https://wa.me/${phone}?text=${encodeURIComponent(en)}">Open WhatsApp (EN)</a>`:''}</div>`;
   if(lang!=='en')html+=`<div class="gen" dir="rtl" id="waAR">${esc(ar)}</div><div class="copyrow"><button class="btn small primary" onclick="copyEl('waAR')">Copy</button>${phone?`<a class="btn small" target="_blank" href="https://wa.me/${phone}?text=${encodeURIComponent(ar)}">Open WhatsApp (AR)</a>`:''}</div>`;
@@ -1938,7 +1975,7 @@ function genWA(){
   document.getElementById('genOut').innerHTML=html;}
 function copyAIPrompt(){
   const a=CUR;
-  const p=`Write a persuasive but culturally-calibrated Jordanian B2B outreach email (Arabic AND English versions) from Ahmad El-Hafez of UBCC/Legenda Bookstore (distributor since 1995, 20,000+ titles, consignment/Net-60 flexible) to this prospect. Use ONLY these facts, invent nothing:\nAccount: ${a.name} | Category: ${a.category} | Area: ${a.area}\nResearch hook: ${a.hook||'none'}\nDecision maker: ${a.decision_maker||'unknown'} | Contact: ${a.contact_person||'unknown'}\nProposed model: ${a.deal_model||'consignment'}\nStatus: ${a.status} | Notes: ${a.notes||'none'}\nRules: warm formal tone, relationship-first, no hard sell, one clear 20-minute coffee ask, mention zero upfront cost if consignment, max 120 words per language, no em-dashes.`;
+  const p=`Write a persuasive but culturally-calibrated Jordanian B2B outreach email (Arabic AND English versions) from ${sender().name} of ${sender().company} (distributor since 1995, 20,000+ titles, consignment/Net-60 flexible) to this prospect. Use ONLY these facts, invent nothing:\nAccount: ${a.name} | Category: ${a.category} | Area: ${a.area}\nResearch hook: ${a.hook||'none'}\nDecision maker: ${a.decision_maker||'unknown'} | Contact: ${a.contact_person||'unknown'}\nProposed model: ${a.deal_model||'consignment'}\nStatus: ${a.status} | Notes: ${a.notes||'none'}\nRules: warm formal tone, relationship-first, no hard sell, one clear 20-minute coffee ask, mention zero upfront cost if consignment, max 120 words per language, no em-dashes.`;
   navigator.clipboard.writeText(p).then(()=>toast('AI prompt copied, paste into Claude'));}
 function copyEl(id){navigator.clipboard.writeText(document.getElementById(id).innerText).then(()=>toast('Copied'));}
 
